@@ -1,0 +1,6 @@
+@JScrapper_HostAddress = http://localhost:5030
+
+GET {{JScrapper_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

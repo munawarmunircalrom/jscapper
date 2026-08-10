@@ -1,0 +1,51 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+# Build results
+**/bin/
+**/obj/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+
+# Ignore logs folder
+**/Logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Publish output
+publish/
+*.publishproj
+
+# NuGet
+*.nupkg
+packages/
+!packages/build/
+
+# Environment files
+.env
+
+# ASP.NET Core
+appsettings.Development.json
+
+# Secrets
+secrets.json
+
+# IIS Express
+iisexpress/
+
+# Test results
+TestResults/
