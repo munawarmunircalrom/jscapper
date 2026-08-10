@@ -1,4 +1,4 @@
-namespace JScrapper
+﻿namespace JScrapper
 {
     public class WeatherForecast
     {

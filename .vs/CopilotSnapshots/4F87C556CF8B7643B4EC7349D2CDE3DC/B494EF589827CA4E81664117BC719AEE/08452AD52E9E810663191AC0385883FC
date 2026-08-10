@@ -1,0 +1,10 @@
+﻿namespace JobAggregator.Application.DTOs;
+
+public sealed record JobPostingDto(
+    Guid Id,
+    string Title,
+    string Company,
+    string City,
+    string Country,
+    string Source,
+    DateTimeOffset CreatedAtUtc);

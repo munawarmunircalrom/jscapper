@@ -1,0 +1,10 @@
+﻿using JobAggregator.Domain.Entities;
+
+namespace JobAggregator.Application.Abstractions.Persistence;
+
+public interface IJobPostingRepository
+{
+    Task AddAsync(JobPosting posting, CancellationToken cancellationToken);
+    Task<JobPosting?> GetByExternalIdAsync(string source, string externalId, CancellationToken cancellationToken);
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+}

@@ -1,0 +1,50 @@
+﻿using JobAggregator.Domain.ValueObjects;
+
+namespace JobAggregator.Domain.Entities;
+
+public sealed class JobPosting
+{
+    private JobPosting()
+    {
+    }
+
+    public JobPosting(string externalId, string title, string company, JobLocation location, string source, Uri? sourceUrl)
+    {
+        Id = Guid.NewGuid();
+        ExternalId = string.IsNullOrWhiteSpace(externalId) ? throw new ArgumentException("External ID is required.", nameof(externalId)) : externalId.Trim();
+        Title = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Title is required.", nameof(title)) : title.Trim();
+        Company = string.IsNullOrWhiteSpace(company) ? throw new ArgumentException("Company is required.", nameof(company)) : company.Trim();
+        Location = location ?? throw new ArgumentNullException(nameof(location));
+        Source = string.IsNullOrWhiteSpace(source) ? throw new ArgumentException("Source is required.", nameof(source)) : source.Trim();
+        SourceUrl = sourceUrl;
+        CreatedAtUtc = DateTimeOffset.UtcNow;
+        UpdatedAtUtc = CreatedAtUtc;
+    }
+
+    public Guid Id { get; private set; }
+
+    public string ExternalId { get; private set; } = string.Empty;
+
+    public string Title { get; private set; } = string.Empty;
+
+    public string Company { get; private set; } = string.Empty;
+
+    public JobLocation Location { get; private set; } = JobLocation.Create("Unknown", "Unknown");
+
+    public string Source { get; private set; } = string.Empty;
+
+    public Uri? SourceUrl { get; private set; }
+
+    public DateTimeOffset CreatedAtUtc { get; private set; }
+
+    public DateTimeOffset UpdatedAtUtc { get; private set; }
+
+    public void UpdateDetails(string title, string company, JobLocation location, Uri? sourceUrl)
+    {
+        Title = string.IsNullOrWhiteSpace(title) ? throw new ArgumentException("Title is required.", nameof(title)) : title.Trim();
+        Company = string.IsNullOrWhiteSpace(company) ? throw new ArgumentException("Company is required.", nameof(company)) : company.Trim();
+        Location = location ?? throw new ArgumentNullException(nameof(location));
+        SourceUrl = sourceUrl;
+        UpdatedAtUtc = DateTimeOffset.UtcNow;
+    }
+}

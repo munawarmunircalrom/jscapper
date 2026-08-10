@@ -1,0 +1,54 @@
+﻿using JobAggregator.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace JobAggregator.Infrastructure.Persistence.Configurations;
+
+public sealed class JobPostingConfiguration : IEntityTypeConfiguration<JobPosting>
+{
+    public void Configure(EntityTypeBuilder<JobPosting> builder)
+    {
+        builder.ToTable("JobPostings");
+
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.ExternalId)
+            .IsRequired()
+            .HasMaxLength(200);
+
+        builder.Property(x => x.Title)
+            .IsRequired()
+            .HasMaxLength(400);
+
+        builder.Property(x => x.Company)
+            .IsRequired()
+            .HasMaxLength(250);
+
+        builder.Property(x => x.Source)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(x => x.SourceUrl)
+            .HasConversion(
+                value => value == null ? null : value.ToString(),
+                value => string.IsNullOrWhiteSpace(value) ? null : new Uri(value));
+
+        builder.OwnsOne(x => x.Location, location =>
+        {
+            location.Property(x => x.City)
+                .HasColumnName("City")
+                .IsRequired()
+                .HasMaxLength(200);
+
+            location.Property(x => x.Country)
+                .HasColumnName("Country")
+                .IsRequired()
+                .HasMaxLength(200);
+        });
+
+        builder.Property(x => x.CreatedAtUtc).IsRequired();
+        builder.Property(x => x.UpdatedAtUtc).IsRequired();
+
+        builder.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
+    }
+}

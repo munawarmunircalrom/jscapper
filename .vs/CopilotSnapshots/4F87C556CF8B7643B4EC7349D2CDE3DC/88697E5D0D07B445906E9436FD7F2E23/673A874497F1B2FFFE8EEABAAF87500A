@@ -1,0 +1,17 @@
+﻿using JobAggregator.Application.Features.WeatherForecast.Queries;
+using JobAggregator.Contracts.Weather;
+using Microsoft.AspNetCore.Mvc;
+
+namespace JobAggregator.Api.Controllers;
+
+[ApiController]
+[Route("[controller]")]
+public class WeatherForecastController(IGetWeatherForecastQueryHandler queryHandler) : ControllerBase
+{
+    [HttpGet(Name = "GetWeatherForecast")]
+    public async Task<ActionResult<IReadOnlyCollection<WeatherForecastDto>>> Get(CancellationToken cancellationToken)
+    {
+        var result = await queryHandler.HandleAsync(new GetWeatherForecastQuery(), cancellationToken);
+        return Ok(result);
+    }
+}

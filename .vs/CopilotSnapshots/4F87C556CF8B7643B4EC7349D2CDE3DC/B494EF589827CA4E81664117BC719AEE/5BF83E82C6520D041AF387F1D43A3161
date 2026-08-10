@@ -1,0 +1,8 @@
+﻿using JobAggregator.Domain.Entities;
+
+namespace JobAggregator.Domain.Services;
+
+public interface IJobDeduplicationService
+{
+    string BuildKey(JobPosting posting);
+}

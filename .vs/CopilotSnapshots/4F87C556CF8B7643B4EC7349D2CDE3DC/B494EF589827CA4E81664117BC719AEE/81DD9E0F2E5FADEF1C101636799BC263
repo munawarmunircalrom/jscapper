@@ -1,0 +1,25 @@
+﻿using JobAggregator.Application.Abstractions.Persistence;
+using JobAggregator.Domain.Entities;
+using JobAggregator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace JobAggregator.Infrastructure.Repositories;
+
+public sealed class JobPostingRepository(JobAggregatorDbContext dbContext) : IJobPostingRepository
+{
+    public async Task AddAsync(JobPosting posting, CancellationToken cancellationToken)
+    {
+        await dbContext.JobPostings.AddAsync(posting, cancellationToken);
+    }
+
+    public Task<JobPosting?> GetByExternalIdAsync(string source, string externalId, CancellationToken cancellationToken)
+    {
+        return dbContext.JobPostings
+            .FirstOrDefaultAsync(x => x.Source == source && x.ExternalId == externalId, cancellationToken);
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        return dbContext.SaveChangesAsync(cancellationToken);
+    }
+}

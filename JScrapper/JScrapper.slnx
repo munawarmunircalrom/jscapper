@@ -1,3 +1,8 @@
 <Solution>
-  <Project Path="JScrapper/JScrapper.csproj" />
+  <Project Path="JScrapper/JobAggregator.Api.csproj" />
+  <Project Path="JScrapper/JobAggregator.Domain/JobAggregator.Domain.csproj" />
+  <Project Path="JScrapper/JobAggregator.Application/JobAggregator.Application.csproj" />
+  <Project Path="JScrapper/JobAggregator.Infrastructure/JobAggregator.Infrastructure.csproj" />
+  <Project Path="JScrapper/JobAggregator.Contracts/JobAggregator.Contracts.csproj" />
+  <Project Path="JScrapper/JobAggregator.Worker/JobAggregator.Worker.csproj" />
 </Solution>

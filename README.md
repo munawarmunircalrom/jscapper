@@ -1,30 +1,71 @@
-# Job Aggregation Platform — Visual Studio Custom Agents
+# Job Aggregation Platform — Visual Studio Copilot Agents + Prompts
 
-Contains 20 Visual Studio/GitHub Copilot custom agents plus repository-wide Copilot instructions.
+This package is structured for Visual Studio GitHub Copilot.
 
-## Install into a repository
+## Custom Agents — use with @
 
-Extract this ZIP into the root of the Job Aggregator repository. The resulting structure is:
+Agents are located in:
 
-.github/
-  agents/
-    *.agent.md
-  copilot-instructions.md
+.github/agents/
 
-Visual Studio supports repository custom agents from `.github/agents/`. See Microsoft's current documentation for custom agents.
+Use them with the `@` syntax, for example:
 
-## User-level alternative
+@Job Aggregator Orchestrator
+@Clean Architecture Architect
+@EF Core Code First Database Architect
+@Angular 20 Frontend Engineer
 
-Copy the `.agent.md` files to `%USERPROFILE%\.github\agents` if you want them available across projects.
+## Custom Prompts — use with /
+
+Prompts are located in:
+
+.github/prompts/
+
+Type `/` in Copilot Chat and the custom prompt files should appear in the IntelliSense list.
+
+Examples:
+- /01-orchestrator
+- /02-requirements
+- /03-architecture
+- /04-database-code-first
+- /05-backend-foundation
+- /06-provider-framework
+- /07-linkedin
+- /08-indeed
+- /09-rozee
+- /10-jobi
+- /11-normalization-deduplication
+- /12-search
+- /13-background-ingestion
+- /14-angular
+- /15-auth-security
+- /16-alerts-notifications
+- /17-testing
+- /18-performance-observability
+- /19-devops-deployment
+- /20-deployment-validation
 
 ## Architecture
+
 - .NET 10
+- ASP.NET Core
 - Angular 20
 - Clean Architecture
 - EF Core Code First
 - SQL Server
 - CQRS/MediatR where appropriate
-- Provider abstraction for LinkedIn, Indeed, Rozee and Jobi
+- Provider abstraction
+- Background ingestion
+- Normalization and deduplication
+- Testing
+- Azure deployment
 
 ## Provider safety
-The provider agents are explicitly restricted to authorized/permitted access. They must not bypass CAPTCHA, authentication, anti-bot systems, rate limits, robots restrictions or other access controls.
+
+Provider agents/prompts require authorized/permitted access. They must not bypass CAPTCHA, authentication, anti-bot controls, rate limits, robots restrictions or other access controls.
+
+## Installation
+
+Extract the ZIP into the root of the repository so that `.github/agents/` and `.github/prompts/` are directly under the repository root.
+
+After extraction, reopen the solution or restart/refresh Copilot Chat if the new prompts are not immediately shown.

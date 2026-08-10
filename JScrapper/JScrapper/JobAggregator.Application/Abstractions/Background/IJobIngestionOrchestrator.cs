@@ -1,0 +1,6 @@
+namespace JobAggregator.Application.Abstractions.Background;
+
+public interface IJobIngestionOrchestrator
+{
+    Task RunOnceAsync(CancellationToken cancellationToken);
+}

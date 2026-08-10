@@ -1,0 +1,6 @@
+﻿namespace JobAggregator.Contracts;
+
+public class Class1
+{
+
+}

@@ -1,0 +1,29 @@
+using JobAggregator.Application.Abstractions.Background;
+
+namespace JobAggregator.Worker;
+
+public sealed class Worker(
+    IJobIngestionOrchestrator orchestrator,
+    ILogger<Worker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await orchestrator.RunOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // graceful shutdown
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Job ingestion cycle failed.");
+            }
+
+            await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+        }
+    }
+}

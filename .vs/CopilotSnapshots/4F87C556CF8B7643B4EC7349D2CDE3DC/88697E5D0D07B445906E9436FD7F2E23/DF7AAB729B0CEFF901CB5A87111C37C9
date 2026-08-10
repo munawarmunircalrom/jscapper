@@ -1,0 +1,29 @@
+﻿using JobAggregator.Contracts.Weather;
+
+namespace JobAggregator.Application.Features.WeatherForecast.Queries;
+
+public sealed class GetWeatherForecastQueryHandler : IGetWeatherForecastQueryHandler
+{
+    private static readonly string[] Summaries =
+    [
+        "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+    ];
+
+    public Task<IReadOnlyCollection<WeatherForecastDto>> HandleAsync(GetWeatherForecastQuery query, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var days = Math.Max(1, query.Days);
+
+        var result = Enumerable.Range(1, days)
+            .Select(index => new WeatherForecastDto
+            {
+                Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+                TemperatureC = Random.Shared.Next(-20, 55),
+                Summary = Summaries[Random.Shared.Next(Summaries.Length)]
+            })
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyCollection<WeatherForecastDto>>(result);
+    }
+}

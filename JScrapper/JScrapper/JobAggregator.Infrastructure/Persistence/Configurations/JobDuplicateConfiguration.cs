@@ -1,0 +1,31 @@
+using JobAggregator.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace JobAggregator.Infrastructure.Persistence.Configurations;
+
+public sealed class JobDuplicateConfiguration : IEntityTypeConfiguration<JobDuplicate>
+{
+    public void Configure(EntityTypeBuilder<JobDuplicate> builder)
+    {
+        builder.ToTable("JobDuplicates");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.DuplicateExternalJobId).IsRequired().HasMaxLength(200);
+        builder.Property(x => x.DuplicateReason).IsRequired().HasMaxLength(500);
+
+        builder.HasOne(x => x.CanonicalJob)
+            .WithMany()
+            .HasForeignKey(x => x.CanonicalJobId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(x => x.DuplicateJobSourcePosting)
+            .WithMany()
+            .HasForeignKey(x => x.DuplicateJobSourcePostingId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(x => new { x.CanonicalJobId, x.DuplicateExternalJobId }).IsUnique();
+
+        builder.ConfigureAuditable();
+    }
+}

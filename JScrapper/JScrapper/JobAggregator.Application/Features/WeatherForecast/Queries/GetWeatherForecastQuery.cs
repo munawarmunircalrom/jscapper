@@ -1,0 +1,3 @@
+namespace JobAggregator.Application.Features.WeatherForecast.Queries;
+
+public sealed record GetWeatherForecastQuery(int Days = 5);

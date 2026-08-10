@@ -1,0 +1,8 @@
+using JobAggregator.Contracts.Weather;
+
+namespace JobAggregator.Application.Features.WeatherForecast.Queries;
+
+public interface IGetWeatherForecastQueryHandler
+{
+    Task<IReadOnlyCollection<WeatherForecastDto>> HandleAsync(GetWeatherForecastQuery query, CancellationToken cancellationToken);
+}

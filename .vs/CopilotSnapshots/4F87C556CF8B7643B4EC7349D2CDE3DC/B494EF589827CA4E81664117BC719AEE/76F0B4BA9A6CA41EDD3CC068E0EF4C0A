@@ -1,0 +1,15 @@
+﻿using JobAggregator.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace JobAggregator.Infrastructure.Persistence;
+
+public sealed class JobAggregatorDbContext(DbContextOptions<JobAggregatorDbContext> options) : DbContext(options)
+{
+    public DbSet<JobPosting> JobPostings => Set<JobPosting>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(JobAggregatorDbContext).Assembly);
+        base.OnModelCreating(modelBuilder);
+    }
+}

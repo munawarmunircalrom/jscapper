@@ -1,0 +1,57 @@
+using JobAggregator.Application.Abstractions.Persistence;
+using JobAggregator.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace JobAggregator.Infrastructure.Persistence;
+
+public sealed class JobAggregatorDbContext(DbContextOptions<JobAggregatorDbContext> options) : DbContext(options), IUnitOfWork
+{
+    public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<JobSource> JobSources => Set<JobSource>();
+    public DbSet<JobSourcePosting> JobSourcePostings => Set<JobSourcePosting>();
+    public DbSet<JobLocation> JobLocations => Set<JobLocation>();
+    public DbSet<JobSkill> JobSkills => Set<JobSkill>();
+    public DbSet<JobSalary> JobSalaries => Set<JobSalary>();
+    public DbSet<JobApplication> JobApplications => Set<JobApplication>();
+    public DbSet<SavedJob> SavedJobs => Set<SavedJob>();
+    public DbSet<JobAlert> JobAlerts => Set<JobAlert>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+    public DbSet<JobIngestionRun> JobIngestionRuns => Set<JobIngestionRun>();
+    public DbSet<JobIngestionError> JobIngestionErrors => Set<JobIngestionError>();
+    public DbSet<JobDuplicate> JobDuplicates => Set<JobDuplicate>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(JobAggregatorDbContext).Assembly);
+        base.OnModelCreating(modelBuilder);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var utcNow = DateTimeOffset.UtcNow;
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.Entity is not JobAggregator.Domain.Common.AuditableEntity auditable)
+            {
+                continue;
+            }
+
+            if (entry.State == EntityState.Added)
+            {
+                auditable.CreatedAtUtc = utcNow;
+                auditable.UpdatedAtUtc = utcNow;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                auditable.UpdatedAtUtc = utcNow;
+            }
+        }
+
+        return base.SaveChangesAsync(cancellationToken);
+    }
+}

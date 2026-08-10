@@ -1,0 +1,15 @@
+using JobAggregator.Application.Abstractions.Providers;
+using JobAggregator.Contracts.Jobs;
+
+namespace JobAggregator.Infrastructure.JobSources;
+
+public sealed class IndeedJobSourceProvider : IJobSourceProvider
+{
+    public string Name => "Indeed";
+
+    public Task<IReadOnlyCollection<RawJobContract>> FetchJobsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyCollection<RawJobContract>>([]);
+    }
+}

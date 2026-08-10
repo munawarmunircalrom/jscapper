@@ -1,0 +1,28 @@
+using JobAggregator.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace JobAggregator.Infrastructure.Persistence.Configurations;
+
+public sealed class JobAlertConfiguration : IEntityTypeConfiguration<JobAlert>
+{
+    public void Configure(EntityTypeBuilder<JobAlert> builder)
+    {
+        builder.ToTable("JobAlerts");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Name).IsRequired().HasMaxLength(120);
+        builder.Property(x => x.Query).IsRequired().HasMaxLength(2000);
+        builder.Property(x => x.FrequencyMinutes).IsRequired();
+        builder.Property(x => x.IsEnabled).IsRequired();
+
+        builder.HasOne(x => x.User)
+            .WithMany(x => x.JobAlerts)
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(x => new { x.UserId, x.IsEnabled });
+
+        builder.ConfigureAuditable();
+    }
+}
