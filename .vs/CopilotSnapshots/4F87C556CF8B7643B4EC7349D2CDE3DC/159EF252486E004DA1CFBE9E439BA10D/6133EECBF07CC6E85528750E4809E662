@@ -1,0 +1,216 @@
+﻿using JobAggregator.Application.Abstractions.Search;
+using JobAggregator.Application.DTOs;
+using JobAggregator.Application.Features.Jobs.Queries;
+using JobAggregator.Domain.Entities;
+using JobAggregator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace JobAggregator.Infrastructure.Search;
+
+public sealed class JobSearchService(JobAggregatorDbContext dbContext) : IJobSearchService
+{
+    public async Task<JobSearchResult> SearchAsync(SearchJobsQuery query, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var pageSize = Math.Clamp(query.PageSize, 1, 100);
+        var pageNumber = Math.Max(1, query.PageNumber);
+
+        var jobs = dbContext.Jobs
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted);
+
+        jobs = ApplyFilters(jobs, query);
+        jobs = ApplySorting(jobs, query);
+
+        var totalCount = await jobs.CountAsync(cancellationToken);
+
+        var pageJobIds = await jobs
+            .Select(x => x.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToArrayAsync(cancellationToken);
+
+        if (pageJobIds.Length == 0)
+        {
+            return new JobSearchResult
+            {
+                Items = [],
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                SortBy = query.SortBy,
+                SortDirection = query.SortDirection
+            };
+        }
+
+        var items = await dbContext.Jobs
+            .AsNoTracking()
+            .Where(x => pageJobIds.Contains(x.Id))
+            .Select(x => new JobSearchItemDto
+            {
+                JobId = x.Id,
+                Title = x.Title,
+                Company = x.Company.Name,
+                Description = x.Description,
+                Location = x.JobLocation.RawText ?? ((x.JobLocation.City ?? string.Empty) + ", " + x.JobLocation.Country).Trim(' ', ','),
+                SalaryMin = x.JobSalary != null ? x.JobSalary.MinAmount : null,
+                SalaryMax = x.JobSalary != null ? x.JobSalary.MaxAmount : null,
+                Currency = x.JobSalary != null ? x.JobSalary.Currency : null,
+                EmploymentType = x.EmploymentType,
+                Experience = x.Seniority,
+                WorkMode = x.WorkMode,
+                PostedAtUtc = x.PostedAtUtc,
+                Skills = x.JobSkills.Select(s => s.Name).ToArray(),
+                Sources = x.JobSourcePostings
+                    .Where(p => p.IsActive)
+                    .Select(p => p.JobSource.Name)
+                    .Distinct()
+                    .ToArray()
+            })
+            .ToListAsync(cancellationToken);
+
+        var itemOrder = pageJobIds
+            .Select((id, index) => new { id, index })
+            .ToDictionary(x => x.id, x => x.index);
+
+        var ordered = items.OrderBy(x => itemOrder[x.JobId]).ToArray();
+
+        return new JobSearchResult
+        {
+            Items = ordered,
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            SortBy = query.SortBy,
+            SortDirection = query.SortDirection
+        };
+    }
+
+    private static IQueryable<Job> ApplyFilters(IQueryable<Job> queryable, SearchJobsQuery query)
+    {
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            var keyword = query.Keyword.Trim();
+            queryable = queryable.Where(x =>
+                x.Title.Contains(keyword) ||
+                (x.Description != null && x.Description.Contains(keyword)) ||
+                x.Company.Name.Contains(keyword) ||
+                (x.JobLocation.RawText != null && x.JobLocation.RawText.Contains(keyword)) ||
+                x.JobSkills.Any(s => s.Name.Contains(keyword)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Title))
+        {
+            var title = query.Title.Trim();
+            queryable = queryable.Where(x => x.Title.Contains(title));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Company))
+        {
+            var company = query.Company.Trim();
+            queryable = queryable.Where(x => x.Company.Name.Contains(company));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Location))
+        {
+            var location = query.Location.Trim();
+            queryable = queryable.Where(x =>
+                (x.JobLocation.RawText != null && x.JobLocation.RawText.Contains(location)) ||
+                (x.JobLocation.City != null && x.JobLocation.City.Contains(location)) ||
+                x.JobLocation.Country.Contains(location));
+        }
+
+        if (query.MinSalary.HasValue)
+        {
+            queryable = queryable.Where(x => x.JobSalary != null &&
+                ((x.JobSalary.MaxAmount.HasValue && x.JobSalary.MaxAmount >= query.MinSalary) ||
+                 (x.JobSalary.MinAmount.HasValue && x.JobSalary.MinAmount >= query.MinSalary)));
+        }
+
+        if (query.MaxSalary.HasValue)
+        {
+            queryable = queryable.Where(x => x.JobSalary != null &&
+                ((x.JobSalary.MinAmount.HasValue && x.JobSalary.MinAmount <= query.MaxSalary) ||
+                 (x.JobSalary.MaxAmount.HasValue && x.JobSalary.MaxAmount <= query.MaxSalary)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Experience))
+        {
+            var experience = query.Experience.Trim();
+            queryable = queryable.Where(x => x.Seniority != null && x.Seniority.Contains(experience));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.EmploymentType))
+        {
+            var employmentType = query.EmploymentType.Trim();
+            queryable = queryable.Where(x => x.EmploymentType != null && x.EmploymentType.Contains(employmentType));
+        }
+
+        if (query.Skills is { Count: > 0 })
+        {
+            var normalizedSkills = query.Skills
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToArray();
+
+            if (normalizedSkills.Length > 0)
+            {
+                queryable = queryable.Where(x => x.JobSkills.Any(s => normalizedSkills.Contains(s.Name)));
+            }
+        }
+
+        if (query.Remote == true && query.Hybrid != true)
+        {
+            queryable = queryable.Where(x => x.WorkMode != null && x.WorkMode.ToLower() == "remote");
+        }
+
+        if (query.Hybrid == true && query.Remote != true)
+        {
+            queryable = queryable.Where(x => x.WorkMode != null && x.WorkMode.ToLower() == "hybrid");
+        }
+
+        if (query.Remote == true && query.Hybrid == true)
+        {
+            queryable = queryable.Where(x => x.WorkMode != null && (x.WorkMode.ToLower() == "remote" || x.WorkMode.ToLower() == "hybrid"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Source))
+        {
+            var source = query.Source.Trim();
+            queryable = queryable.Where(x => x.JobSourcePostings.Any(p => p.IsActive && p.JobSource.Name.Contains(source)));
+        }
+
+        if (query.PostedFrom.HasValue)
+        {
+            queryable = queryable.Where(x => x.PostedAtUtc >= query.PostedFrom.Value);
+        }
+
+        if (query.PostedTo.HasValue)
+        {
+            queryable = queryable.Where(x => x.PostedAtUtc <= query.PostedTo.Value);
+        }
+
+        return queryable;
+    }
+
+    private static IQueryable<Job> ApplySorting(IQueryable<Job> queryable, SearchJobsQuery query)
+    {
+        var sortBy = query.SortBy?.Trim().ToLowerInvariant() ?? "posteddate";
+        var desc = !string.Equals(query.SortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+
+        return (sortBy, desc) switch
+        {
+            ("title", true) => queryable.OrderByDescending(x => x.Title).ThenByDescending(x => x.PostedAtUtc),
+            ("title", false) => queryable.OrderBy(x => x.Title).ThenByDescending(x => x.PostedAtUtc),
+            ("company", true) => queryable.OrderByDescending(x => x.Company.Name).ThenByDescending(x => x.PostedAtUtc),
+            ("company", false) => queryable.OrderBy(x => x.Company.Name).ThenByDescending(x => x.PostedAtUtc),
+            ("salary", true) => queryable.OrderByDescending(x => x.JobSalary != null ? x.JobSalary.MaxAmount : null).ThenByDescending(x => x.PostedAtUtc),
+            ("salary", false) => queryable.OrderBy(x => x.JobSalary != null ? x.JobSalary.MinAmount : null).ThenByDescending(x => x.PostedAtUtc),
+            ("experience", true) => queryable.OrderByDescending(x => x.Seniority).ThenByDescending(x => x.PostedAtUtc),
+            ("experience", false) => queryable.OrderBy(x => x.Seniority).ThenByDescending(x => x.PostedAtUtc),
+            ("posteddate", false) => queryable.OrderBy(x => x.PostedAtUtc),
+            _ => queryable.OrderByDescending(x => x.PostedAtUtc)
+        };
+    }
+}

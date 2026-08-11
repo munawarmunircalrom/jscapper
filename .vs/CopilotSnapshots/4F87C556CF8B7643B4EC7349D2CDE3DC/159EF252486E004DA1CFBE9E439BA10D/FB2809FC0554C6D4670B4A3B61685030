@@ -1,0 +1,69 @@
+﻿using JobAggregator.Application.Abstractions.Background;
+using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+using Microsoft.Extensions.Logging;
+
+namespace JobAggregator.Application.Services;
+
+public sealed class JobIngestionOrchestrator(
+    IJobSourceProviderFactory providerFactory,
+    IRawJobNormalizer normalizer,
+    IRawJobValidator validator,
+    IRawJobDeduplicator deduplicator,
+    IRawJobPersister persister,
+    IRawJobSearchIndexer searchIndexer,
+    IRawJobAlertDispatcher alertDispatcher,
+    IRawJobNotificationDispatcher notificationDispatcher,
+    ILogger<JobIngestionOrchestrator> logger) : IJobIngestionOrchestrator
+{
+    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    {
+        var providers = providerFactory.GetEnabledProviders();
+
+        foreach (var provider in providers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var request = new JobSearchRequest(
+                ProviderName: provider.Name,
+                Keywords: null,
+                Location: null,
+                PageNumber: 1,
+                PageSize: provider.Configuration.DefaultPageSize,
+                MaxPages: 1,
+                CorrelationId: Guid.NewGuid().ToString("N"),
+                IdempotencyScope: DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyyMMdd"));
+
+            logger.LogInformation("Starting ingestion for provider {ProviderName}.", provider.Name);
+
+            for (var currentPage = 1; currentPage <= request.MaxPages; currentPage++)
+            {
+                var pagedRequest = request with { PageNumber = currentPage };
+                var fetched = await provider.FetchJobsAsync(pagedRequest, cancellationToken);
+
+                var normalized = await normalizer.NormalizeAsync(fetched.Jobs, cancellationToken);
+                var validated = await validator.ValidateAsync(normalized, cancellationToken);
+                var deduplicated = await deduplicator.DeduplicateAsync(validated, cancellationToken);
+
+                await persister.PersistAsync(deduplicated, cancellationToken);
+                await searchIndexer.IndexAsync(deduplicated, cancellationToken);
+                await alertDispatcher.DispatchAsync(deduplicated, cancellationToken);
+                await notificationDispatcher.DispatchAsync(deduplicated, cancellationToken);
+
+                logger.LogInformation(
+                    "Provider {ProviderName} page {PageNumber} processed. fetched={Fetched} normalized={Normalized} validated={Validated} deduplicated={Deduplicated}",
+                    provider.Name,
+                    currentPage,
+                    fetched.Jobs.Count,
+                    normalized.Count,
+                    validated.Count,
+                    deduplicated.Count);
+
+                if (!fetched.HasMore)
+                {
+                    break;
+                }
+            }
+        }
+    }
+}

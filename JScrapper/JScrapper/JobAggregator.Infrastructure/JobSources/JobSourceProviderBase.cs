@@ -1,0 +1,168 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using JobAggregator.Application.Abstractions.Providers;
+using Microsoft.Extensions.Logging;
+
+namespace JobAggregator.Infrastructure.JobSources;
+
+public abstract class JobSourceProviderBase(ILogger logger) : IJobSourceProvider
+{
+    private static readonly Meter Meter = new("JobAggregator.JobSources");
+    private static readonly Counter<long> FetchAttempts = Meter.CreateCounter<long>("job_provider_fetch_attempts");
+    private static readonly Counter<long> FetchSuccesses = Meter.CreateCounter<long>("job_provider_fetch_successes");
+    private static readonly Counter<long> FetchFailures = Meter.CreateCounter<long>("job_provider_fetch_failures");
+    private static readonly Histogram<double> FetchDurationMs = Meter.CreateHistogram<double>("job_provider_fetch_duration_ms");
+
+    private readonly SemaphoreSlim _rateLimitLock = new(1, 1);
+    private DateTimeOffset _lastRequestUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset? _lastSuccessAtUtc;
+    private int _consecutiveFailures;
+    private double _avgLatencyMs;
+
+    protected ILogger Logger { get; } = logger;
+
+    public abstract string Name { get; }
+    public abstract JobProviderConfiguration Configuration { get; }
+
+    public Task<JobProviderHealth> CheckHealthAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var health = new JobProviderHealth(
+            ProviderName: Name,
+            IsHealthy: _consecutiveFailures < 3,
+            CheckedAtUtc: DateTimeOffset.UtcNow,
+            LastSuccessAtUtc: _lastSuccessAtUtc,
+            ConsecutiveFailures: _consecutiveFailures,
+            LastError: null,
+            AverageLatencyMs: _avgLatencyMs == 0 ? null : _avgLatencyMs);
+
+        return Task.FromResult(health);
+    }
+
+    public async Task<JobFetchResult> FetchJobsAsync(JobSearchRequest request, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(request.ProviderName, Name, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Request provider '{request.ProviderName}' does not match '{Name}'.");
+        }
+
+        var maxRetries = Math.Max(0, Configuration.MaxRetries);
+        var timeout = request.Timeout ?? TimeSpan.FromSeconds(Configuration.TimeoutSeconds);
+        var attempts = 0;
+        Exception? lastError = null;
+
+        while (attempts <= maxRetries)
+        {
+            attempts++;
+            FetchAttempts.Add(1, new KeyValuePair<string, object?>("provider", Name));
+
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linkedCts.CancelAfter(timeout);
+
+            await ApplyRateLimitAsync(linkedCts.Token);
+
+            var stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                var result = await FetchPageCoreAsync(request, linkedCts.Token);
+                stopwatch.Stop();
+
+                _lastSuccessAtUtc = DateTimeOffset.UtcNow;
+                _consecutiveFailures = 0;
+                _avgLatencyMs = _avgLatencyMs == 0 ? stopwatch.Elapsed.TotalMilliseconds : (_avgLatencyMs * 0.8) + (stopwatch.Elapsed.TotalMilliseconds * 0.2);
+
+                FetchSuccesses.Add(1, new KeyValuePair<string, object?>("provider", Name));
+                FetchDurationMs.Record(stopwatch.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("provider", Name));
+
+                var hydratedJobs = result.Jobs
+                    .Select(job => job with { IdempotencyKey = EnsureIdempotencyKey(job, request.IdempotencyScope) })
+                    .ToArray();
+
+                return new JobFetchResult(
+                    ProviderName: Name,
+                    PageNumber: request.PageNumber,
+                    PageSize: request.PageSize,
+                    Jobs: hydratedJobs,
+                    HasMore: result.HasMore,
+                    NextCursor: result.NextCursor,
+                    Attempts: attempts,
+                    Duration: stopwatch.Elapsed,
+                    Health: new JobProviderHealth(Name, true, DateTimeOffset.UtcNow, _lastSuccessAtUtc, _consecutiveFailures, null, _avgLatencyMs));
+            }
+            catch (OperationCanceledException) when (linkedCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                lastError = new TimeoutException($"Provider '{Name}' timed out after {timeout.TotalSeconds:F0}s.");
+            }
+            catch (Exception ex) when (attempts <= maxRetries)
+            {
+                lastError = ex;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                break;
+            }
+
+            _consecutiveFailures++;
+            FetchFailures.Add(1, new KeyValuePair<string, object?>("provider", Name));
+
+            if (attempts <= maxRetries)
+            {
+                var baseDelayMs = Math.Max(50, Configuration.RetryDelayMilliseconds);
+                var multiplier = Math.Pow(2, attempts - 1);
+                var delayMs = Math.Min(baseDelayMs * multiplier, 30_000);
+                var delay = TimeSpan.FromMilliseconds(delayMs);
+
+                Logger.LogWarning(
+                    lastError,
+                    "Provider {ProviderName} failed attempt {Attempt}/{MaxAttempts}. Retrying in {DelayMs}ms.",
+                    Name,
+                    attempts,
+                    maxRetries + 1,
+                    delay.TotalMilliseconds);
+
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException($"Provider '{Name}' failed after {attempts} attempts.", lastError);
+    }
+
+    protected abstract Task<(IReadOnlyCollection<RawJob> Jobs, bool HasMore, string? NextCursor)> FetchPageCoreAsync(JobSearchRequest request, CancellationToken cancellationToken);
+
+    private static string EnsureIdempotencyKey(RawJob job, string? scope)
+    {
+        if (!string.IsNullOrWhiteSpace(job.IdempotencyKey))
+        {
+            return job.IdempotencyKey;
+        }
+
+        var normalizedScope = string.IsNullOrWhiteSpace(scope) ? "global" : scope.Trim();
+        return $"{job.ProviderName}:{normalizedScope}:{job.ExternalJobId}";
+    }
+
+    private async Task ApplyRateLimitAsync(CancellationToken cancellationToken)
+    {
+        var rpm = Math.Max(1, Configuration.RequestsPerMinute);
+        var minInterval = TimeSpan.FromSeconds(60d / rpm);
+
+        await _rateLimitLock.WaitAsync(cancellationToken);
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var elapsed = now - _lastRequestUtc;
+            if (elapsed < minInterval)
+            {
+                await Task.Delay(minInterval - elapsed, cancellationToken);
+            }
+
+            _lastRequestUtc = DateTimeOffset.UtcNow;
+        }
+        finally
+        {
+            _rateLimitLock.Release();
+        }
+    }
+}

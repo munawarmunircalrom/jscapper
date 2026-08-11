@@ -1,0 +1,75 @@
+﻿<p-card>
+  <ng-template pTemplate="title">Job Search</ng-template>
+
+  <div class="filters-grid">
+    <span class="p-input-icon-left">
+      <i class="pi pi-search"></i>
+      <input pInputText type="text" placeholder="Keyword"
+        [ngModel]="filters().keyword"
+        (ngModelChange)="filters.set({ ...filters(), keyword: $event })">
+    </span>
+
+    <input pInputText type="text" placeholder="Title"
+      [ngModel]="filters().title"
+      (ngModelChange)="filters.set({ ...filters(), title: $event })">
+
+    <input pInputText type="text" placeholder="Company"
+      [ngModel]="filters().company"
+      (ngModelChange)="filters.set({ ...filters(), company: $event })">
+
+    <input pInputText type="text" placeholder="Location"
+      [ngModel]="filters().location"
+      (ngModelChange)="filters.set({ ...filters(), location: $event })">
+
+    <p-inputnumber [showButtons]="true" mode="decimal" placeholder="Min Salary"
+      [ngModel]="filters().minSalary"
+      (ngModelChange)="filters.set({ ...filters(), minSalary: $event })"></p-inputnumber>
+
+    <p-inputnumber [showButtons]="true" mode="decimal" placeholder="Max Salary"
+      [ngModel]="filters().maxSalary"
+      (ngModelChange)="filters.set({ ...filters(), maxSalary: $event })"></p-inputnumber>
+
+    <input pInputText type="text" placeholder="Experience (e.g. Mid)"
+      [ngModel]="filters().experience"
+      (ngModelChange)="filters.set({ ...filters(), experience: $event })">
+
+    <input pInputText type="text" placeholder="Employment Type (e.g. FullTime)"
+      [ngModel]="filters().employmentType"
+      (ngModelChange)="filters.set({ ...filters(), employmentType: $event })">
+
+    <input pInputText type="text" placeholder="Source (LinkedIn, Indeed...)"
+      [ngModel]="filters().source"
+      (ngModelChange)="filters.set({ ...filters(), source: $event })">
+
+    <p-select [options]="sortOptions" optionLabel="label" [(ngModel)]="selectedSort"></p-select>
+
+    <div class="flags">
+      <p-checkbox binary="true" [ngModel]="filters().remote ?? false"
+        (ngModelChange)="filters.set({ ...filters(), remote: $event ? true : undefined })"
+        inputId="remote"></p-checkbox>
+      <label for="remote">Remote</label>
+
+      <p-checkbox binary="true" [ngModel]="filters().hybrid ?? false"
+        (ngModelChange)="filters.set({ ...filters(), hybrid: $event ? true : undefined })"
+        inputId="hybrid"></p-checkbox>
+      <label for="hybrid">Hybrid</label>
+    </div>
+  </div>
+
+  <div class="skills-row">
+    <input pInputText type="text" placeholder="Skills (comma separated)" [ngModel]="skillsInput()"
+      (ngModelChange)="skillsInput.set($event)">
+    <button pButton type="button" label="Add Skills" severity="secondary" (click)="addSkillsFromInput()"></button>
+  </div>
+
+  <div class="skills-tags">
+    @for (skill of filters().skills; track skill) {
+      <p-tag [value]="skill" [rounded]="true" [removable]="true" (onRemove)="removeSkill(skill)"></p-tag>
+    }
+  </div>
+
+  <div class="actions">
+    <button pButton type="button" label="Apply" icon="pi pi-filter" (click)="onApply()"></button>
+    <button pButton type="button" label="Reset" severity="secondary" icon="pi pi-refresh" (click)="onReset()"></button>
+  </div>
+</p-card>

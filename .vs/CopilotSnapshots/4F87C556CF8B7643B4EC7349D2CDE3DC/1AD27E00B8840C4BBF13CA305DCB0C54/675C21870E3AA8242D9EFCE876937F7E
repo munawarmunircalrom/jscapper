@@ -1,0 +1,6 @@
+﻿namespace JobAggregator.Worker.Scheduling;
+
+public sealed class IngestionSchedulingOptions
+{
+    public IReadOnlyCollection<ProviderIngestionScheduleOptions> Providers { get; init; } = [];
+}

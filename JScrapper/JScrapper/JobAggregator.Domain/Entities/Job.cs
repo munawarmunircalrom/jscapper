@@ -28,4 +28,5 @@ public sealed class Job : AuditableEntity
     public ICollection<JobSourcePosting> JobSourcePostings { get; set; } = new List<JobSourcePosting>();
     public ICollection<JobApplication> JobApplications { get; set; } = new List<JobApplication>();
     public ICollection<SavedJob> SavedJobs { get; set; } = new List<SavedJob>();
+    public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 }

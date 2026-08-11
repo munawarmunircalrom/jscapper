@@ -1,10 +1,18 @@
 using JobAggregator.Application.Abstractions.Background;
+using JobAggregator.Application.Abstractions.Alerts;
+using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Notifications;
 using JobAggregator.Application.Abstractions.Persistence;
 using JobAggregator.Application.Abstractions.Providers;
+using JobAggregator.Application.Abstractions.Search;
+using JobAggregator.Infrastructure.Alerts;
 using JobAggregator.Infrastructure.Background;
+using JobAggregator.Infrastructure.Ingestion;
 using JobAggregator.Infrastructure.JobSources;
+using JobAggregator.Infrastructure.Notifications;
 using JobAggregator.Infrastructure.Persistence;
 using JobAggregator.Infrastructure.Repositories;
+using JobAggregator.Infrastructure.Search;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,12 +32,24 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<JobAggregatorDbContext>());
         services.AddScoped<IJobRepository, JobRepository>();
         services.AddScoped<IJobSourcePostingRepository, JobSourcePostingRepository>();
-        services.AddScoped<IJobIngestionOrchestrator, JobIngestionOrchestrator>();
+        services.AddScoped<IJobSearchService, JobSearchService>();
+        services.AddScoped<IJobAlertService, JobAlertService>();
+        services.AddScoped<IEmailNotificationSender, NoOpEmailNotificationSender>();
+        services.AddScoped<IIngestionHistoryStore, IngestionHistoryStore>();
+
+        services.AddScoped<IRawJobNormalizer, RawJobNormalizer>();
+        services.AddScoped<IRawJobValidator, RawJobValidator>();
+        services.AddScoped<IRawJobDeduplicator, RawJobDeduplicator>();
+        services.AddScoped<IRawJobPersister, RawJobPersister>();
+        services.AddScoped<IRawJobSearchIndexer, RawJobSearchIndexer>();
+        services.AddScoped<IRawJobAlertDispatcher, RawJobAlertDispatcher>();
+        services.AddScoped<IRawJobNotificationDispatcher, RawJobNotificationDispatcher>();
 
         services.AddScoped<IJobSourceProvider, LinkedInJobSourceProvider>();
         services.AddScoped<IJobSourceProvider, IndeedJobSourceProvider>();
         services.AddScoped<IJobSourceProvider, RozeeJobSourceProvider>();
         services.AddScoped<IJobSourceProvider, JobiJobSourceProvider>();
+        services.AddScoped<IJobSourceProviderFactory, JobSourceProviderFactory>();
 
         return services;
     }

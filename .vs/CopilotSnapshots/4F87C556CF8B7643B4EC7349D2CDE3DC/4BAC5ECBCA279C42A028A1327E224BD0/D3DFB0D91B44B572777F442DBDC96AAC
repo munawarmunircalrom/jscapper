@@ -1,0 +1,21 @@
+﻿using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobValidator : IRawJobValidator
+{
+    public Task<IReadOnlyCollection<RawJob>> ValidateAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var validJobs = jobs
+            .Where(job =>
+                !string.IsNullOrWhiteSpace(job.ExternalJobId) &&
+                !string.IsNullOrWhiteSpace(job.Title) &&
+                !string.IsNullOrWhiteSpace(job.Company))
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyCollection<RawJob>>(validJobs);
+    }
+}

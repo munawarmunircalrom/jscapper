@@ -1,0 +1,27 @@
+﻿using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobNormalizer : IRawJobNormalizer
+{
+    public Task<IReadOnlyCollection<RawJob>> NormalizeAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalized = jobs
+            .Select(job => job with
+            {
+                Title = job.Title.Trim(),
+                Company = job.Company.Trim(),
+                Location = string.IsNullOrWhiteSpace(job.Location) ? null : job.Location.Trim(),
+                Description = string.IsNullOrWhiteSpace(job.Description) ? null : job.Description.Trim(),
+                IdempotencyKey = string.IsNullOrWhiteSpace(job.IdempotencyKey)
+                    ? $"{job.ProviderName}:global:{job.ExternalJobId}"
+                    : job.IdempotencyKey.Trim()
+            })
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyCollection<RawJob>>(normalized);
+    }
+}

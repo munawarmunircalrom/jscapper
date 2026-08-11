@@ -8,7 +8,11 @@ public sealed class JobConfiguration : IEntityTypeConfiguration<Job>
 {
     public void Configure(EntityTypeBuilder<Job> builder)
     {
-        builder.ToTable("Jobs");
+        builder.ToTable("Jobs", table =>
+        {
+            table.HasCheckConstraint("CK_Jobs_ExpiresAfterPosted", "[PostedAtUtc] IS NULL OR [ExpiresAtUtc] IS NULL OR [ExpiresAtUtc] >= [PostedAtUtc]");
+        });
+
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.CanonicalHash).IsRequired().HasMaxLength(128).IsUnicode(false);
@@ -38,6 +42,9 @@ public sealed class JobConfiguration : IEntityTypeConfiguration<Job>
         builder.HasIndex(x => x.CanonicalHash).IsUnique();
         builder.HasIndex(x => x.PostedAtUtc);
         builder.HasIndex(x => new { x.Title, x.CompanyId });
+        builder.HasIndex(x => x.IsDeleted);
+        builder.HasIndex(x => new { x.IsDeleted, x.PostedAtUtc });
+        builder.HasIndex(x => new { x.EmploymentType, x.WorkMode, x.Seniority });
 
         builder.ConfigureAuditable();
     }

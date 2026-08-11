@@ -1,30 +1,35 @@
 using FluentValidation;
+using JobAggregator.Contracts.Common;
 using JobAggregator.Contracts.Weather;
+using MediatR;
 
 namespace JobAggregator.Application.Features.WeatherForecast.Queries;
 
-public sealed class GetWeatherForecastQueryHandler(IValidator<GetWeatherForecastQuery> validator) : IGetWeatherForecastQueryHandler
+public sealed class GetWeatherForecastQueryHandler : IRequestHandler<GetWeatherForecastQuery, PagedResult<WeatherForecastDto>>
 {
     private static readonly string[] Summaries =
     [
         "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
     ];
 
-    public async Task<IReadOnlyCollection<WeatherForecastDto>> HandleAsync(GetWeatherForecastQuery query, CancellationToken cancellationToken)
+    public async Task<PagedResult<WeatherForecastDto>> Handle(GetWeatherForecastQuery query, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        await validator.ValidateAndThrowAsync(query, cancellationToken);
+        var totalCount = query.Days;
+        var skip = (query.PageNumber - 1) * query.PageSize;
 
-        var result = Enumerable.Range(1, query.Days)
+        var items = Enumerable.Range(1, query.Days)
             .Select(index => new WeatherForecastDto
             {
                 Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
                 TemperatureC = Random.Shared.Next(-20, 55),
                 Summary = Summaries[Random.Shared.Next(Summaries.Length)]
             })
+            .Skip(skip)
+            .Take(query.PageSize)
             .ToArray();
 
-        return result;
+        return PagedResult<WeatherForecastDto>.Create(items, totalCount, query.PageNumber, query.PageSize);
     }
 }

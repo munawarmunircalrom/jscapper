@@ -1,0 +1,50 @@
+﻿import { describe, expect, it } from 'vitest';
+import { JobCardComponent } from './job-card.component';
+
+describe('JobCardComponent', () => {
+  it('returns not specified salary text when salary is missing', () => {
+    const component = new JobCardComponent();
+    component.job = {
+      jobId: '1',
+      title: 'Developer',
+      company: 'Acme',
+      description: null,
+      location: null,
+      salaryMin: null,
+      salaryMax: null,
+      currency: null,
+      employmentType: null,
+      experience: null,
+      workMode: null,
+      postedAtUtc: null,
+      skills: [],
+      sources: ['LinkedIn']
+    };
+
+    expect(component.salaryText).toBe('Not specified');
+  });
+
+  it('formats salary range when both min and max are present', () => {
+    const component = new JobCardComponent();
+    component.job = {
+      jobId: '1',
+      title: 'Developer',
+      company: 'Acme',
+      description: null,
+      location: null,
+      salaryMin: 1000,
+      salaryMax: 2000,
+      currency: 'USD',
+      employmentType: null,
+      experience: null,
+      workMode: null,
+      postedAtUtc: null,
+      skills: [],
+      sources: ['LinkedIn']
+    };
+
+    expect(component.salaryText).toContain('USD');
+    expect(component.salaryText).toContain('1,000');
+    expect(component.salaryText).toContain('2,000');
+  });
+});

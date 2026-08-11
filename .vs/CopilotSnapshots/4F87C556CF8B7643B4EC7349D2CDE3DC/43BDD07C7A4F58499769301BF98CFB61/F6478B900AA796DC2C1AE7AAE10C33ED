@@ -1,0 +1,16 @@
+﻿using FluentValidation;
+using JobAggregator.Application.Features.WeatherForecast.Queries;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace JobAggregator.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        services.AddScoped<IGetWeatherForecastQueryHandler, GetWeatherForecastQueryHandler>();
+        services.AddScoped<IValidator<GetWeatherForecastQuery>, GetWeatherForecastQueryValidator>();
+
+        return services;
+    }
+}

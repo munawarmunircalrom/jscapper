@@ -1,0 +1,18 @@
+using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobNormalizer : IRawJobNormalizer
+{
+    public Task<IReadOnlyCollection<RawJob>> NormalizeAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalized = jobs
+            .Select(JobNormalization.Normalize)
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyCollection<RawJob>>(normalized);
+    }
+}

@@ -1,0 +1,52 @@
+﻿using JobAggregator.Application;
+using JobAggregator.Infrastructure;
+using JobAggregator.Worker.Jobs;
+using JobAggregator.Worker.Scheduling;
+using Microsoft.Extensions.Options;
+using Quartz;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
+
+builder.Services.Configure<IngestionSchedulingOptions>(builder.Configuration.GetSection("Ingestion"));
+
+builder.Services.AddQuartz((serviceProvider, quartz) =>
+{
+    quartz.UseMicrosoftDependencyInjectionJobFactory();
+
+    var schedules = serviceProvider
+        .GetRequiredService<IOptions<IngestionSchedulingOptions>>()
+        .Value
+        .Providers
+        .Where(x => x.Enabled)
+        .ToArray();
+
+    foreach (var schedule in schedules)
+    {
+        var providerName = schedule.ProviderName.Trim();
+        var jobKey = new JobKey($"ingestion-{providerName}", "providers");
+
+        quartz.AddJob<ProviderIngestionJob>(options => options
+            .WithIdentity(jobKey)
+            .StoreDurably()
+            .UsingJobData(ProviderIngestionJob.ProviderNameKey, providerName)
+            .UsingJobData(ProviderIngestionJob.TimeoutSecondsKey, schedule.TimeoutSeconds)
+            .UsingJobData(ProviderIngestionJob.MaxAttemptsKey, schedule.MaxAttempts)
+            .UsingJobData(ProviderIngestionJob.RetryBaseDelaySecondsKey, schedule.RetryBaseDelaySeconds));
+
+        quartz.AddTrigger(options => options
+            .ForJob(jobKey)
+            .WithIdentity($"trigger-{providerName}", "providers")
+            .WithCronSchedule(schedule.Cron, cron => cron.WithMisfireHandlingInstructionDoNothing()));
+    }
+});
+
+builder.Services.AddQuartzHostedService(options =>
+{
+    options.WaitForJobsToComplete = true;
+});
+
+var host = builder.Build();
+host.Run();

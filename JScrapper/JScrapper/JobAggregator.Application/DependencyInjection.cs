@@ -1,5 +1,8 @@
 using FluentValidation;
-using JobAggregator.Application.Features.WeatherForecast.Queries;
+using JobAggregator.Application.Abstractions.Background;
+using JobAggregator.Application.Common.Behaviors;
+using JobAggregator.Application.Services;
+using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace JobAggregator.Application;
@@ -8,8 +11,13 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        services.AddScoped<IGetWeatherForecastQueryHandler, GetWeatherForecastQueryHandler>();
-        services.AddScoped<IValidator<GetWeatherForecastQuery>, GetWeatherForecastQueryValidator>();
+        services.AddMediatR(configuration =>
+            configuration.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly));
+
+        services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        services.AddScoped<IJobIngestionOrchestrator, JobIngestionOrchestrator>();
 
         return services;
     }

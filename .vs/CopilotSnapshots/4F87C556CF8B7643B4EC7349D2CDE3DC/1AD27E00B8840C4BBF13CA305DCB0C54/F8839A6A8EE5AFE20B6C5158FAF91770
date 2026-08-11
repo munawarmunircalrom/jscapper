@@ -1,0 +1,48 @@
+﻿{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=JobAggregatorDb;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "Ingestion": {
+    "Providers": [
+      {
+        "ProviderName": "LinkedIn",
+        "Enabled": true,
+        "Cron": "0 0/5 * * * ?",
+        "TimeoutSeconds": 120,
+        "MaxAttempts": 3,
+        "RetryBaseDelaySeconds": 3
+      },
+      {
+        "ProviderName": "Indeed",
+        "Enabled": true,
+        "Cron": "0 1/5 * * * ?",
+        "TimeoutSeconds": 120,
+        "MaxAttempts": 3,
+        "RetryBaseDelaySeconds": 3
+      },
+      {
+        "ProviderName": "Rozee",
+        "Enabled": true,
+        "Cron": "0 2/5 * * * ?",
+        "TimeoutSeconds": 120,
+        "MaxAttempts": 3,
+        "RetryBaseDelaySeconds": 3
+      },
+      {
+        "ProviderName": "Jobi",
+        "Enabled": true,
+        "Cron": "0 3/5 * * * ?",
+        "TimeoutSeconds": 120,
+        "MaxAttempts": 3,
+        "RetryBaseDelaySeconds": 3
+      }
+    ]
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Quartz": "Information"
+    }
+  }
+}

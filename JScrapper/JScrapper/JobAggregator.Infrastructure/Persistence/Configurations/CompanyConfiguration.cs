@@ -17,6 +17,9 @@ public sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.Property(x => x.IsDeleted).IsRequired();
 
         builder.HasIndex(x => x.Name);
+        builder.HasIndex(x => new { x.Name, x.IsDeleted })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
 
         builder.ConfigureAuditable();
     }

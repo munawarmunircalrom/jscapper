@@ -1,0 +1,396 @@
+﻿using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+using JobAggregator.Domain.Entities;
+using JobAggregator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobPersister(
+    JobAggregatorDbContext dbContext,
+    ILogger<RawJobPersister> logger) : IRawJobPersister
+{
+    public async Task PersistAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (jobs.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var rawJob in jobs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var source = await GetOrCreateSourceAsync(rawJob.ProviderName, cancellationToken);
+
+            var existingPosting = await dbContext.JobSourcePostings
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.Company)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobLocation)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobSalary)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobSkills)
+                .FirstOrDefaultAsync(
+                    x => x.JobSourceId == source.Id && x.ExternalJobId == rawJob.ExternalJobId,
+                    cancellationToken);
+
+            if (existingPosting is not null)
+            {
+                existingPosting.LastSeenAtUtc = DateTimeOffset.UtcNow;
+                existingPosting.SourceUrl = rawJob.CanonicalUrl ?? rawJob.SourceUrl?.ToString();
+                existingPosting.RawPayloadHash = rawJob.ContentHash;
+                existingPosting.IsActive = true;
+                continue;
+            }
+
+            var match = await FindCanonicalMatchAsync(rawJob, cancellationToken);
+            if (match is not null)
+            {
+                var matched = match.Value;
+
+                var duplicatePosting = new JobSourcePosting
+                {
+                    Id = Guid.NewGuid(),
+                    JobId = matched.Job.Id,
+                    JobSourceId = source.Id,
+                    ExternalJobId = rawJob.ExternalJobId,
+                    SourceUrl = rawJob.CanonicalUrl ?? rawJob.SourceUrl?.ToString(),
+                    RawPayloadHash = rawJob.ContentHash,
+                    FirstSeenAtUtc = DateTimeOffset.UtcNow,
+                    LastSeenAtUtc = DateTimeOffset.UtcNow,
+                    IsActive = true
+                };
+
+                await dbContext.JobSourcePostings.AddAsync(duplicatePosting, cancellationToken);
+
+                await dbContext.JobDuplicates.AddAsync(new JobDuplicate
+                {
+                    Id = Guid.NewGuid(),
+                    CanonicalJobId = matched.Job.Id,
+                    DuplicateJobSourcePostingId = duplicatePosting.Id,
+                    DuplicateExternalJobId = $"{rawJob.ProviderName}:{rawJob.ExternalJobId}",
+                    DuplicateReason = matched.Reason,
+                    MatchConfidence = decimal.Round((decimal)matched.Confidence, 4, MidpointRounding.AwayFromZero)
+                }, cancellationToken);
+
+                continue;
+            }
+
+            var company = await GetOrCreateCompanyAsync(rawJob.Company, cancellationToken);
+            var location = await GetOrCreateLocationAsync(rawJob.Location, cancellationToken);
+            var salary = await GetOrCreateSalaryAsync(rawJob, cancellationToken);
+
+            var canonicalJob = new Job
+            {
+                Id = Guid.NewGuid(),
+                CanonicalHash = BuildCanonicalHash(rawJob),
+                Title = rawJob.Title,
+                Description = rawJob.Description,
+                EmploymentType = rawJob.EmploymentType,
+                Seniority = rawJob.Experience,
+                PostedAtUtc = rawJob.PostedAtUtc,
+                SearchText = BuildSearchText(rawJob),
+                IsDeleted = false,
+                CompanyId = company.Id,
+                JobLocationId = location.Id,
+                JobSalaryId = salary?.Id
+            };
+
+            foreach (var skill in rawJob.Skills ?? [])
+            {
+                canonicalJob.JobSkills.Add(new JobSkill
+                {
+                    Id = Guid.NewGuid(),
+                    Name = skill,
+                    IsRequired = true
+                });
+            }
+
+            await dbContext.Jobs.AddAsync(canonicalJob, cancellationToken);
+
+            await dbContext.JobSourcePostings.AddAsync(new JobSourcePosting
+            {
+                Id = Guid.NewGuid(),
+                JobId = canonicalJob.Id,
+                JobSourceId = source.Id,
+                ExternalJobId = rawJob.ExternalJobId,
+                SourceUrl = rawJob.CanonicalUrl ?? rawJob.SourceUrl?.ToString(),
+                RawPayloadHash = rawJob.ContentHash,
+                FirstSeenAtUtc = DateTimeOffset.UtcNow,
+                LastSeenAtUtc = DateTimeOffset.UtcNow,
+                IsActive = true
+            }, cancellationToken);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("Persist stage stored/updated {Count} provider postings with canonical deduplication.", jobs.Count);
+    }
+
+    private async Task<(Job Job, double Confidence, string Reason)?> FindCanonicalMatchAsync(RawJob rawJob, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(rawJob.CanonicalUrl))
+        {
+            var byUrl = await dbContext.JobSourcePostings
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.Company)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobLocation)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobSalary)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobSkills)
+                .FirstOrDefaultAsync(
+                    x => x.SourceUrl == rawJob.CanonicalUrl,
+                    cancellationToken);
+
+            if (byUrl is not null)
+            {
+                return (byUrl.Job, 0.98, "canonical_url");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawJob.ContentHash))
+        {
+            var byHash = await dbContext.JobSourcePostings
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.Company)
+                .Include(x => x.Job)
+                    .ThenInclude(x => x.JobLocation)
+                .FirstOrDefaultAsync(
+                    x => x.RawPayloadHash == rawJob.ContentHash,
+                    cancellationToken);
+
+            if (byHash is not null)
+            {
+                return (byHash.Job, 0.95, "content_hash");
+            }
+        }
+
+        var byTuple = await dbContext.Jobs
+            .Include(x => x.Company)
+            .Include(x => x.JobLocation)
+            .FirstOrDefaultAsync(
+                x => x.Title == rawJob.Title &&
+                     x.Company.Name == rawJob.Company &&
+                     x.JobLocation.RawText == rawJob.Location,
+                cancellationToken);
+
+        if (byTuple is not null)
+        {
+            return (byTuple, 0.85, "company_title_location");
+        }
+
+        var candidates = await dbContext.Jobs
+            .Include(x => x.Company)
+            .Include(x => x.JobLocation)
+            .Include(x => x.JobSalary)
+            .Include(x => x.JobSkills)
+            .OrderByDescending(x => x.PostedAtUtc)
+            .Take(500)
+            .ToListAsync(cancellationToken);
+
+        (Job Job, double Confidence, string Reason)? bestMatch = null;
+
+        foreach (var candidate in candidates)
+        {
+            var candidateRaw = new RawJob(
+                ProviderName: "canonical",
+                ExternalJobId: candidate.Id.ToString("N"),
+                Title: candidate.Title,
+                Company: candidate.Company.Name,
+                Description: candidate.Description,
+                Location: candidate.JobLocation.RawText,
+                SalaryMin: candidate.JobSalary?.MinAmount,
+                SalaryMax: candidate.JobSalary?.MaxAmount,
+                Currency: candidate.JobSalary?.Currency,
+                EmploymentType: candidate.EmploymentType,
+                Experience: candidate.Seniority,
+                Skills: candidate.JobSkills.Select(x => x.Name).ToArray(),
+                PostedAtUtc: candidate.PostedAtUtc,
+                SourceUrl: null,
+                CanonicalUrl: null,
+                ContentHash: candidate.CanonicalHash,
+                DeduplicationConfidence: null,
+                IdempotencyKey: candidate.Id.ToString("N"));
+
+            var evaluation = JobDeduplication.Evaluate(rawJob, candidateRaw);
+            if (!evaluation.IsDuplicate)
+            {
+                continue;
+            }
+
+            if (bestMatch is null || evaluation.Confidence > bestMatch.Value.Confidence)
+            {
+                bestMatch = (candidate, evaluation.Confidence, evaluation.Reason);
+            }
+        }
+
+        return bestMatch;
+    }
+
+    private async Task<JobSource> GetOrCreateSourceAsync(string providerName, CancellationToken cancellationToken)
+    {
+        var normalized = providerName.Trim();
+
+        var source = await dbContext.JobSources.FirstOrDefaultAsync(
+            x => x.Name == normalized,
+            cancellationToken);
+
+        if (source is not null)
+        {
+            return source;
+        }
+
+        source = new JobSource
+        {
+            Id = Guid.NewGuid(),
+            Name = normalized,
+            IsActive = true
+        };
+
+        await dbContext.JobSources.AddAsync(source, cancellationToken);
+        return source;
+    }
+
+    private async Task<Company> GetOrCreateCompanyAsync(string companyName, CancellationToken cancellationToken)
+    {
+        var company = await dbContext.Companies.FirstOrDefaultAsync(
+            x => x.Name == companyName && !x.IsDeleted,
+            cancellationToken);
+
+        if (company is not null)
+        {
+            return company;
+        }
+
+        company = new Company
+        {
+            Id = Guid.NewGuid(),
+            Name = companyName,
+            IsDeleted = false
+        };
+
+        await dbContext.Companies.AddAsync(company, cancellationToken);
+        return company;
+    }
+
+    private async Task<JobLocation> GetOrCreateLocationAsync(string? rawLocation, CancellationToken cancellationToken)
+    {
+        var normalized = rawLocation?.Trim();
+        var (city, state, country) = ParseLocation(normalized);
+
+        var location = await dbContext.JobLocations.FirstOrDefaultAsync(
+            x => x.Country == country && x.State == state && x.City == city,
+            cancellationToken);
+
+        if (location is not null)
+        {
+            return location;
+        }
+
+        location = new JobLocation
+        {
+            Id = Guid.NewGuid(),
+            Country = country,
+            State = state,
+            City = city,
+            RawText = normalized
+        };
+
+        await dbContext.JobLocations.AddAsync(location, cancellationToken);
+        return location;
+    }
+
+    private async Task<JobSalary?> GetOrCreateSalaryAsync(RawJob rawJob, CancellationToken cancellationToken)
+    {
+        if (!rawJob.SalaryMin.HasValue && !rawJob.SalaryMax.HasValue && string.IsNullOrWhiteSpace(rawJob.Currency))
+        {
+            return null;
+        }
+
+        var currency = string.IsNullOrWhiteSpace(rawJob.Currency) ? "USD" : rawJob.Currency!;
+
+        var salary = await dbContext.JobSalaries.FirstOrDefaultAsync(
+            x => x.MinAmount == rawJob.SalaryMin && x.MaxAmount == rawJob.SalaryMax && x.Currency == currency,
+            cancellationToken);
+
+        if (salary is not null)
+        {
+            return salary;
+        }
+
+        salary = new JobSalary
+        {
+            Id = Guid.NewGuid(),
+            MinAmount = rawJob.SalaryMin,
+            MaxAmount = rawJob.SalaryMax,
+            Currency = currency,
+            Period = "year"
+        };
+
+        await dbContext.JobSalaries.AddAsync(salary, cancellationToken);
+        return salary;
+    }
+
+    private static string BuildCanonicalHash(RawJob rawJob)
+    {
+        return JobNormalization.ComputeContentHash(
+            rawJob.Title,
+            rawJob.Company,
+            rawJob.Description,
+            rawJob.Location,
+            rawJob.SalaryMin,
+            rawJob.SalaryMax,
+            rawJob.Currency,
+            rawJob.EmploymentType,
+            rawJob.Experience,
+            rawJob.Skills ?? [],
+            rawJob.PostedAtUtc,
+            rawJob.CanonicalUrl);
+    }
+
+    private static string BuildSearchText(RawJob rawJob)
+    {
+        var parts = new[]
+        {
+            rawJob.Title,
+            rawJob.Company,
+            rawJob.Description,
+            rawJob.Location,
+            rawJob.EmploymentType,
+            rawJob.Experience,
+            string.Join(' ', rawJob.Skills ?? [])
+        };
+
+        return string.Join(' ', parts.Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
+    }
+
+    private static (string? City, string? State, string Country) ParseLocation(string? location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return (null, null, "Unknown");
+        }
+
+        var parts = location
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 1)
+        {
+            return (parts[0], null, "Unknown");
+        }
+
+        if (parts.Length == 2)
+        {
+            return (parts[0], null, parts[1]);
+        }
+
+        return (parts[0], parts[1], parts[^1]);
+    }
+}

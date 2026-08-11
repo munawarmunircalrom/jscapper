@@ -1,0 +1,15 @@
+﻿using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+using Microsoft.Extensions.Logging;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobAlertDispatcher(ILogger<RawJobAlertDispatcher> logger) : IRawJobAlertDispatcher
+{
+    public Task DispatchAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation("Alert stage processed {Count} raw jobs.", jobs.Count);
+        return Task.CompletedTask;
+    }
+}

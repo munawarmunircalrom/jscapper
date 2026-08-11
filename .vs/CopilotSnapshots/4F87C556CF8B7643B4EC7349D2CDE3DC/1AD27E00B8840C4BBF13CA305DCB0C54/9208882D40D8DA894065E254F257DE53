@@ -1,0 +1,11 @@
+﻿namespace JobAggregator.Worker.Scheduling;
+
+public sealed class ProviderIngestionScheduleOptions
+{
+    public required string ProviderName { get; init; }
+    public bool Enabled { get; init; } = true;
+    public required string Cron { get; init; }
+    public int TimeoutSeconds { get; init; } = 120;
+    public int MaxAttempts { get; init; } = 3;
+    public int RetryBaseDelaySeconds { get; init; } = 5;
+}

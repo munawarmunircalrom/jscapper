@@ -13,11 +13,12 @@ public sealed class JobDuplicateConfiguration : IEntityTypeConfiguration<JobDupl
 
         builder.Property(x => x.DuplicateExternalJobId).IsRequired().HasMaxLength(200);
         builder.Property(x => x.DuplicateReason).IsRequired().HasMaxLength(500);
+        builder.Property(x => x.MatchConfidence).IsRequired().HasPrecision(5, 4);
 
         builder.HasOne(x => x.CanonicalJob)
             .WithMany()
             .HasForeignKey(x => x.CanonicalJobId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(x => x.DuplicateJobSourcePosting)
             .WithMany()

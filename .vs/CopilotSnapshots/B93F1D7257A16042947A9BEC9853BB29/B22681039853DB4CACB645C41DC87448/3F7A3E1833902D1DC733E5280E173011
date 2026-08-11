@@ -1,0 +1,33 @@
+﻿{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=JobAggregatorDb;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "Authentication": {
+    "Authority": "",
+    "Audience": "job-aggregator-api"
+  },
+  "Pagination": {
+    "DefaultPageSize": 10,
+    "MaxPageSize": 100
+  },
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.Console" ],
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.AspNetCore": "Warning"
+      }
+    },
+    "WriteTo": [
+      {
+        "Name": "Console"
+      }
+    ],
+    "Enrich": [ "FromLogContext" ],
+    "Properties": {
+      "Application": "JobAggregator.Api"
+    }
+  },
+  "AllowedHosts": "*"
+}

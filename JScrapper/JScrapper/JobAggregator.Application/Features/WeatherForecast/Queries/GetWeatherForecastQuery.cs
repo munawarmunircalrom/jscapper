@@ -1,3 +1,7 @@
+using JobAggregator.Contracts.Common;
+using JobAggregator.Contracts.Weather;
+using MediatR;
+
 namespace JobAggregator.Application.Features.WeatherForecast.Queries;
 
-public sealed record GetWeatherForecastQuery(int Days = 5);
+public sealed record GetWeatherForecastQuery(int Days = 5, int PageNumber = 1, int PageSize = 10) : IRequest<PagedResult<WeatherForecastDto>>;

@@ -1,0 +1,22 @@
+﻿namespace JobAggregator.Application.Abstractions.Providers;
+
+public sealed record RawJob(
+    string ProviderName,
+    string ExternalJobId,
+    string Title,
+    string Company,
+    string? Description,
+    string? Location,
+    decimal? SalaryMin,
+    decimal? SalaryMax,
+    string? Currency,
+    string? EmploymentType,
+    string? Experience,
+    IReadOnlyCollection<string>? Skills,
+    DateTimeOffset? PostedAtUtc,
+    Uri? SourceUrl,
+    string? CanonicalUrl,
+    string? ContentHash,
+    double? DeduplicationConfidence,
+    string IdempotencyKey,
+    IReadOnlyDictionary<string, string>? Attributes = null);

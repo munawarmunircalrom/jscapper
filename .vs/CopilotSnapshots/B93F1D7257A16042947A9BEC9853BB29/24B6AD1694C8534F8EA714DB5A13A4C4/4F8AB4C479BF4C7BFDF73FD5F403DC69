@@ -1,0 +1,215 @@
+﻿using JobAggregator.Application.Abstractions.Alerts;
+using JobAggregator.Application.DTOs;
+using JobAggregator.Domain.Entities;
+using JobAggregator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace JobAggregator.Infrastructure.Alerts;
+
+public sealed class JobAlertService(JobAggregatorDbContext dbContext) : IJobAlertService
+{
+    public async Task<IReadOnlyCollection<JobAlertDto>> GetAlertsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await EnsureUserExistsAsync(userId, cancellationToken);
+
+        return await dbContext.JobAlerts
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Select(MapAlert)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    public async Task<JobAlertDto> CreateAlertAsync(Guid userId, UpsertJobAlertRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureUserExistsAsync(userId, cancellationToken);
+
+        var alert = new JobAlert
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Name = request.Name.Trim(),
+            Query = BuildQueryText(request),
+            Keywords = Clean(request.Keywords),
+            Location = Clean(request.Location),
+            SkillsCsv = JoinCsv(request.Skills),
+            MinSalary = request.MinSalary,
+            MaxSalary = request.MaxSalary,
+            Experience = Clean(request.Experience),
+            EmploymentType = Clean(request.EmploymentType),
+            Remote = request.Remote,
+            SourcesCsv = JoinCsv(request.Sources),
+            FrequencyMinutes = request.FrequencyMinutes,
+            IsEnabled = true,
+            LastRunAtUtc = null
+        };
+
+        dbContext.JobAlerts.Add(alert);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return MapAlert(alert);
+    }
+
+    public async Task<JobAlertDto> UpdateAlertAsync(Guid userId, Guid alertId, UpsertJobAlertRequest request, CancellationToken cancellationToken)
+    {
+        var alert = await dbContext.JobAlerts.FirstOrDefaultAsync(x => x.Id == alertId && x.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Alert not found.");
+
+        alert.Name = request.Name.Trim();
+        alert.Query = BuildQueryText(request);
+        alert.Keywords = Clean(request.Keywords);
+        alert.Location = Clean(request.Location);
+        alert.SkillsCsv = JoinCsv(request.Skills);
+        alert.MinSalary = request.MinSalary;
+        alert.MaxSalary = request.MaxSalary;
+        alert.Experience = Clean(request.Experience);
+        alert.EmploymentType = Clean(request.EmploymentType);
+        alert.Remote = request.Remote;
+        alert.SourcesCsv = JoinCsv(request.Sources);
+        alert.FrequencyMinutes = request.FrequencyMinutes;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return MapAlert(alert);
+    }
+
+    public async Task PauseAlertAsync(Guid userId, Guid alertId, CancellationToken cancellationToken)
+    {
+        var alert = await dbContext.JobAlerts.FirstOrDefaultAsync(x => x.Id == alertId && x.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Alert not found.");
+
+        alert.IsEnabled = false;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ResumeAlertAsync(Guid userId, Guid alertId, CancellationToken cancellationToken)
+    {
+        var alert = await dbContext.JobAlerts.FirstOrDefaultAsync(x => x.Id == alertId && x.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Alert not found.");
+
+        alert.IsEnabled = true;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAlertAsync(Guid userId, Guid alertId, CancellationToken cancellationToken)
+    {
+        var alert = await dbContext.JobAlerts.FirstOrDefaultAsync(x => x.Id == alertId && x.UserId == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("Alert not found.");
+
+        dbContext.JobAlerts.Remove(alert);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<NotificationHistoryItemDto>> GetNotificationHistoryAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await EnsureUserExistsAsync(userId, cancellationToken);
+
+        return await dbContext.Notifications
+            .AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Take(500)
+            .Select(x => new NotificationHistoryItemDto
+            {
+                NotificationId = x.Id,
+                UserId = x.UserId,
+                JobId = x.JobId,
+                AlertId = x.AlertId,
+                SentAtUtc = x.SentAtUtc,
+                Status = x.Status,
+                Channel = x.Channel,
+                Title = x.Title,
+                Message = x.Message,
+                IsRead = x.IsRead,
+                CreatedAtUtc = x.CreatedAtUtc
+            })
+            .ToArrayAsync(cancellationToken);
+    }
+
+    private async Task EnsureUserExistsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var exists = await dbContext.Users.AnyAsync(x => x.Id == userId, cancellationToken);
+        if (exists)
+        {
+            return;
+        }
+
+        dbContext.Users.Add(new User
+        {
+            Id = userId,
+            Email = $"user-{userId:N}@local.invalid",
+            DisplayName = $"User {userId:N}",
+            IsActive = true
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static JobAlertDto MapAlert(JobAlert alert)
+    {
+        return new JobAlertDto
+        {
+            AlertId = alert.Id,
+            UserId = alert.UserId,
+            Name = alert.Name,
+            Keywords = alert.Keywords,
+            Location = alert.Location,
+            Skills = SplitCsv(alert.SkillsCsv),
+            MinSalary = alert.MinSalary,
+            MaxSalary = alert.MaxSalary,
+            Experience = alert.Experience,
+            EmploymentType = alert.EmploymentType,
+            Remote = alert.Remote,
+            Sources = SplitCsv(alert.SourcesCsv),
+            IsEnabled = alert.IsEnabled,
+            LastRunAtUtc = alert.LastRunAtUtc
+        };
+    }
+
+    private static string BuildQueryText(UpsertJobAlertRequest request)
+    {
+        var skills = request.Skills is { Count: > 0 } ? string.Join(',', request.Skills) : string.Empty;
+        var sources = request.Sources is { Count: > 0 } ? string.Join(',', request.Sources) : string.Empty;
+
+        return $"keywords={request.Keywords};location={request.Location};skills={skills};minSalary={request.MinSalary};maxSalary={request.MaxSalary};experience={request.Experience};employmentType={request.EmploymentType};remote={request.Remote};sources={sources}";
+    }
+
+    private static string? JoinCsv(IReadOnlyCollection<string>? values)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return null;
+        }
+
+        var normalized = values
+            .Select(x => x?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return normalized.Length == 0 ? null : string.Join(',', normalized);
+    }
+
+    private static IReadOnlyCollection<string> SplitCsv(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        return value
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? Clean(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
+    }
+}

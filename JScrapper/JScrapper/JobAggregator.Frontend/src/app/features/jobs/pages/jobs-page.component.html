@@ -1,0 +1,26 @@
+<section class="jobs-page">
+  <app-job-filters (filtersChanged)="onFiltersChanged($event)" (sortChanged)="onSortChanged($event)"></app-job-filters>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <div class="content-grid">
+    <app-job-list
+      [jobs]="jobs()"
+      [loading]="loading()"
+      [selectedJobId]="selectedJob()?.jobId ?? null"
+      [totalCount]="totalCount()"
+      [first]="first()"
+      [pageSize]="pageSize()"
+      (jobSelected)="onJobSelected($event)"
+      (openOriginal)="onOpenOriginal($event)"
+      (pageChanged)="onPageChanged($event)">
+    </app-job-list>
+
+    <app-job-details
+      [job]="selectedJob()"
+      (openOriginal)="onOpenOriginal($event)">
+    </app-job-details>
+  </div>
+</section>

@@ -1,0 +1,21 @@
+﻿using JobAggregator.Application.Abstractions.Background;
+using JobAggregator.Application.Abstractions.Providers;
+using Microsoft.Extensions.Logging;
+
+namespace JobAggregator.Infrastructure.Background;
+
+public sealed class JobIngestionOrchestrator(
+    IEnumerable<IJobSourceProvider> providers,
+    ILogger<JobIngestionOrchestrator> logger) : IJobIngestionOrchestrator
+{
+    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    {
+        foreach (var provider in providers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var jobs = await provider.FetchJobsAsync(cancellationToken);
+            logger.LogInformation("Provider {ProviderName} returned {Count} jobs.", provider.Name, jobs.Count);
+        }
+    }
+}

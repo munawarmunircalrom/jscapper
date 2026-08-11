@@ -1,0 +1,19 @@
+﻿using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobDeduplicator : IRawJobDeduplicator
+{
+    public Task<IReadOnlyCollection<RawJob>> DeduplicateAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var deduplicated = jobs
+            .GroupBy(job => job.IdempotencyKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyCollection<RawJob>>(deduplicated);
+    }
+}

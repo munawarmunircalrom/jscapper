@@ -1,0 +1,41 @@
+<section class="job-details">
+  @if (!job) {
+    <p-card>
+      <p>Select a job to view details.</p>
+    </p-card>
+  } @else {
+    <p-card>
+      <ng-template pTemplate="title">{{ job.title }}</ng-template>
+      <ng-template pTemplate="subtitle">{{ job.company }} • {{ job.location || 'Location not specified' }}</ng-template>
+
+      <div class="detail-grid">
+        <div><strong>Posted:</strong> {{ postedDate }}</div>
+        <div><strong>Experience:</strong> {{ job.experience || 'N/A' }}</div>
+        <div><strong>Employment:</strong> {{ job.employmentType || 'N/A' }}</div>
+        <div><strong>Work Mode:</strong> {{ job.workMode || 'N/A' }}</div>
+      </div>
+
+      <h4>Description</h4>
+      <p class="description">{{ job.description || 'No description available.' }}</p>
+
+      <h4>Skills</h4>
+      <div class="tags">
+        @for (skill of job.skills; track skill) {
+          <p-tag severity="contrast" [value]="skill"></p-tag>
+        }
+      </div>
+
+      <h4>Sources</h4>
+      <div class="tags">
+        @for (source of job.sources; track source) {
+          <p-tag severity="info" [value]="source"></p-tag>
+        }
+      </div>
+
+      <div class="actions">
+        <button pButton type="button" icon="pi pi-external-link" label="Apply / Open Original Job"
+          (click)="openOriginal.emit(job)"></button>
+      </div>
+    </p-card>
+  }
+</section>

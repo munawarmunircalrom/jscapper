@@ -1,0 +1,36 @@
+<article class="job-card" [class.selected]="selected" (click)="selectedJob.emit(job)">
+  <header>
+    <h4>{{ job.title }}</h4>
+    <small>{{ postedDate }}</small>
+  </header>
+
+  <div class="meta">
+    <span>{{ job.company }}</span>
+    <span>{{ job.location || 'Location not specified' }}</span>
+  </div>
+
+  <div class="salary">Salary: {{ salaryText }}</div>
+
+  <div class="tags">
+    @if (job.workMode) {
+      <p-tag [value]="job.workMode"></p-tag>
+    }
+    @if (job.employmentType) {
+      <p-tag severity="secondary" [value]="job.employmentType"></p-tag>
+    }
+    @if (job.experience) {
+      <p-tag severity="warn" [value]="job.experience"></p-tag>
+    }
+  </div>
+
+  <div class="sources">
+    @for (source of job.sources; track source) {
+      <p-tag severity="info" [value]="source"></p-tag>
+    }
+  </div>
+
+  <footer>
+    <button pButton type="button" size="small" icon="pi pi-external-link" label="Open Original"
+      (click)="$event.stopPropagation(); openOriginal.emit(job)"></button>
+  </footer>
+</article>

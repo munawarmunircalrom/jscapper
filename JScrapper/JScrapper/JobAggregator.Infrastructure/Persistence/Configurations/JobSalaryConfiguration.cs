@@ -8,7 +8,11 @@ public sealed class JobSalaryConfiguration : IEntityTypeConfiguration<JobSalary>
 {
     public void Configure(EntityTypeBuilder<JobSalary> builder)
     {
-        builder.ToTable("JobSalaries");
+        builder.ToTable("JobSalaries", table =>
+        {
+            table.HasCheckConstraint("CK_JobSalaries_MinLessOrEqualMax", "[MinAmount] IS NULL OR [MaxAmount] IS NULL OR [MinAmount] <= [MaxAmount]");
+        });
+
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.MinAmount).HasPrecision(18, 2);

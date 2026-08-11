@@ -1,0 +1,17 @@
+﻿using JobAggregator.Application.Abstractions.Ingestion;
+using JobAggregator.Application.Abstractions.Providers;
+using Microsoft.Extensions.Logging;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+public sealed class RawJobPersister(ILogger<RawJobPersister> logger) : IRawJobPersister
+{
+    public Task PersistAsync(IReadOnlyCollection<RawJob> jobs, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        logger.LogInformation("Persist stage accepted {Count} raw jobs for downstream persistence pipeline.", jobs.Count);
+
+        return Task.CompletedTask;
+    }
+}

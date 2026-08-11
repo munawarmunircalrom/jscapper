@@ -1,0 +1,28 @@
+.job-details {
+  position: sticky;
+  top: 4.75rem;
+  align-self: start;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.description {
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.actions {
+  margin-top: 1rem;
+}

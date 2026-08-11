@@ -5,4 +5,5 @@
   <Project Path="JScrapper/JobAggregator.Infrastructure/JobAggregator.Infrastructure.csproj" />
   <Project Path="JScrapper/JobAggregator.Contracts/JobAggregator.Contracts.csproj" />
   <Project Path="JScrapper/JobAggregator.Worker/JobAggregator.Worker.csproj" />
+  <Project Path="JScrapper/JobAggregator.Infrastructure.Tests/JobAggregator.Infrastructure.Tests.csproj" />
 </Solution>

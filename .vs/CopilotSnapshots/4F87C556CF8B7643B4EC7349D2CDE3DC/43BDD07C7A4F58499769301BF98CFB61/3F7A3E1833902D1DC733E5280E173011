@@ -1,0 +1,16 @@
+﻿{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\MSSQLLocalDB;Database=JobAggregatorDb;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "Authentication": {
+    "Authority": "",
+    "Audience": "job-aggregator-api"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}

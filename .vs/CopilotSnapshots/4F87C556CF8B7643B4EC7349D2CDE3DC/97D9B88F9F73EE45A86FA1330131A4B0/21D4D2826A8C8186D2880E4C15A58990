@@ -1,0 +1,156 @@
+﻿using JobAggregator.Application.Abstractions.Providers;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+internal static class JobDeduplication
+{
+    public static (bool IsDuplicate, double Confidence, string Reason) Evaluate(RawJob candidate, RawJob existing)
+    {
+        if (string.Equals(candidate.ProviderName, existing.ProviderName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.ExternalJobId, existing.ExternalJobId, StringComparison.OrdinalIgnoreCase))
+        {
+            return (true, 1.00, "provider_external_id");
+        }
+
+        if (!string.IsNullOrWhiteSpace(candidate.CanonicalUrl) &&
+            string.Equals(candidate.CanonicalUrl, existing.CanonicalUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return (true, 0.98, "canonical_url");
+        }
+
+        if (!string.IsNullOrWhiteSpace(candidate.ContentHash) &&
+            string.Equals(candidate.ContentHash, existing.ContentHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return (true, 0.95, "content_hash");
+        }
+
+        var companyTitleLocationMatch =
+            string.Equals(candidate.Company, existing.Company, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.Title, existing.Title, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.Location, existing.Location, StringComparison.OrdinalIgnoreCase);
+
+        var descriptionSimilarity = CalculateTextSimilarity(candidate.Description, existing.Description);
+        var salarySimilarity = CalculateSalarySimilarity(candidate.SalaryMin, candidate.SalaryMax, existing.SalaryMin, existing.SalaryMax, candidate.Currency, existing.Currency);
+        var postingDateSimilarity = CalculatePostingDateSimilarity(candidate.PostedAtUtc, existing.PostedAtUtc);
+
+        var confidence = 0d;
+        var reason = "none";
+
+        if (companyTitleLocationMatch)
+        {
+            confidence = Math.Max(confidence, 0.85);
+            reason = "company_title_location";
+        }
+
+        if (descriptionSimilarity >= 0.80)
+        {
+            confidence = Math.Max(confidence, 0.65 + (descriptionSimilarity * 0.25));
+            reason = reason == "none" ? "description_similarity" : $"{reason}+description_similarity";
+        }
+
+        if (salarySimilarity >= 0.80)
+        {
+            confidence = Math.Max(confidence, 0.60 + (salarySimilarity * 0.20));
+            reason = reason == "none" ? "salary_similarity" : $"{reason}+salary_similarity";
+        }
+
+        if (postingDateSimilarity >= 0.80)
+        {
+            confidence = Math.Max(confidence, 0.55 + (postingDateSimilarity * 0.15));
+            reason = reason == "none" ? "posting_date_similarity" : $"{reason}+posting_date_similarity";
+        }
+
+        return (confidence >= 0.75, Math.Round(confidence, 4), reason);
+    }
+
+    public static double CalculateTextSimilarity(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return 0;
+        }
+
+        var leftTokens = Tokenize(left);
+        var rightTokens = Tokenize(right);
+
+        if (leftTokens.Count == 0 || rightTokens.Count == 0)
+        {
+            return 0;
+        }
+
+        var intersection = leftTokens.Intersect(rightTokens, StringComparer.OrdinalIgnoreCase).Count();
+        var union = leftTokens.Union(rightTokens, StringComparer.OrdinalIgnoreCase).Count();
+        return union == 0 ? 0 : (double)intersection / union;
+    }
+
+    public static double CalculateSalarySimilarity(
+        decimal? minA,
+        decimal? maxA,
+        decimal? minB,
+        decimal? maxB,
+        string? currencyA,
+        string? currencyB)
+    {
+        if (!string.IsNullOrWhiteSpace(currencyA) && !string.IsNullOrWhiteSpace(currencyB) &&
+            !string.Equals(currencyA, currencyB, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (!minA.HasValue && !maxA.HasValue && !minB.HasValue && !maxB.HasValue)
+        {
+            return 0;
+        }
+
+        var aMin = minA ?? maxA ?? 0;
+        var aMax = maxA ?? minA ?? aMin;
+        var bMin = minB ?? maxB ?? 0;
+        var bMax = maxB ?? minB ?? bMin;
+
+        if (aMax == 0 && bMax == 0)
+        {
+            return 0;
+        }
+
+        var overlapMin = Math.Max(aMin, bMin);
+        var overlapMax = Math.Min(aMax, bMax);
+        if (overlapMax < overlapMin)
+        {
+            return 0;
+        }
+
+        var overlap = overlapMax - overlapMin;
+        var span = Math.Max(aMax, bMax) - Math.Min(aMin, bMin);
+        if (span <= 0)
+        {
+            return 1;
+        }
+
+        return (double)(overlap / span);
+    }
+
+    public static double CalculatePostingDateSimilarity(DateTimeOffset? first, DateTimeOffset? second)
+    {
+        if (!first.HasValue || !second.HasValue)
+        {
+            return 0;
+        }
+
+        var days = Math.Abs((first.Value.Date - second.Value.Date).TotalDays);
+        if (days <= 1) return 1;
+        if (days <= 3) return 0.9;
+        if (days <= 7) return 0.8;
+        if (days <= 14) return 0.6;
+        return 0.3;
+    }
+
+    private static IReadOnlyCollection<string> Tokenize(string value)
+    {
+        return value
+            .Split([' ', ',', '.', ';', ':', '-', '_', '\\', '/', '\t', '\r', '\n', '(', ')', '[', ']', '{', '}', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => x.Length > 2)
+            .Select(x => x.ToLowerInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+}

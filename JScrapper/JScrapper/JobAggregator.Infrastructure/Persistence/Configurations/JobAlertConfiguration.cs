@@ -13,6 +13,14 @@ public sealed class JobAlertConfiguration : IEntityTypeConfiguration<JobAlert>
 
         builder.Property(x => x.Name).IsRequired().HasMaxLength(120);
         builder.Property(x => x.Query).IsRequired().HasMaxLength(2000);
+        builder.Property(x => x.Keywords).HasMaxLength(500);
+        builder.Property(x => x.Location).HasMaxLength(200);
+        builder.Property(x => x.SkillsCsv).HasMaxLength(2000);
+        builder.Property(x => x.MinSalary).HasPrecision(18, 2);
+        builder.Property(x => x.MaxSalary).HasPrecision(18, 2);
+        builder.Property(x => x.Experience).HasMaxLength(100);
+        builder.Property(x => x.EmploymentType).HasMaxLength(100);
+        builder.Property(x => x.SourcesCsv).HasMaxLength(1000);
         builder.Property(x => x.FrequencyMinutes).IsRequired();
         builder.Property(x => x.IsEnabled).IsRequired();
 

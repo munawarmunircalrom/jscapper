@@ -1,0 +1,36 @@
+﻿using JobAggregator.Application.Abstractions.Background;
+using JobAggregator.Application.Abstractions.Persistence;
+using JobAggregator.Application.Abstractions.Providers;
+using JobAggregator.Infrastructure.Background;
+using JobAggregator.Infrastructure.JobSources;
+using JobAggregator.Infrastructure.Persistence;
+using JobAggregator.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace JobAggregator.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? "Server=(localdb)\\MSSQLLocalDB;Database=JobAggregatorDb;Trusted_Connection=True;TrustServerCertificate=True;";
+
+        services.AddDbContext<JobAggregatorDbContext>(options =>
+            options.UseSqlServer(connectionString));
+
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<JobAggregatorDbContext>());
+        services.AddScoped<IJobRepository, JobRepository>();
+        services.AddScoped<IJobSourcePostingRepository, JobSourcePostingRepository>();
+        services.AddScoped<IJobIngestionOrchestrator, JobIngestionOrchestrator>();
+
+        services.AddScoped<IJobSourceProvider, LinkedInJobSourceProvider>();
+        services.AddScoped<IJobSourceProvider, IndeedJobSourceProvider>();
+        services.AddScoped<IJobSourceProvider, RozeeJobSourceProvider>();
+        services.AddScoped<IJobSourceProvider, JobiJobSourceProvider>();
+
+        return services;
+    }
+}

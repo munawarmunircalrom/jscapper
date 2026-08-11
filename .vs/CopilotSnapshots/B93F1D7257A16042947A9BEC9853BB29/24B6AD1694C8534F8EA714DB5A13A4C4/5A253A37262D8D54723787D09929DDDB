@@ -1,0 +1,60 @@
+﻿using FluentValidation;
+using JobAggregator.Contracts.Common;
+using System.Net;
+
+namespace JobAggregator.Api.Middleware;
+
+public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+{
+    public async Task InvokeAsync(HttpContext httpContext)
+    {
+        try
+        {
+            await next(httpContext);
+        }
+        catch (ValidationException exception)
+        {
+            logger.LogWarning(exception, "Validation failed.");
+            await WriteErrorAsync(httpContext, HttpStatusCode.BadRequest, "validation_error", "One or more validation errors occurred.", exception.Errors.Select(e => e.ErrorMessage));
+        }
+        catch (OperationCanceledException) when (httpContext.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogInformation("Request was canceled by the client.");
+            if (!httpContext.Response.HasStarted)
+            {
+                httpContext.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Unhandled exception occurred.");
+            await WriteErrorAsync(httpContext, HttpStatusCode.InternalServerError, "server_error", "An unexpected error occurred.", null);
+        }
+    }
+
+    private static async Task WriteErrorAsync(
+        HttpContext httpContext,
+        HttpStatusCode statusCode,
+        string code,
+        string message,
+        IEnumerable<string>? details)
+    {
+        if (httpContext.Response.HasStarted)
+        {
+            return;
+        }
+
+        httpContext.Response.ContentType = "application/json";
+        httpContext.Response.StatusCode = (int)statusCode;
+
+        var response = new ApiErrorResponse
+        {
+            Code = code,
+            Message = message,
+            Details = details?.ToArray(),
+            TraceId = httpContext.TraceIdentifier
+        };
+
+        await httpContext.Response.WriteAsJsonAsync(response);
+    }
+}

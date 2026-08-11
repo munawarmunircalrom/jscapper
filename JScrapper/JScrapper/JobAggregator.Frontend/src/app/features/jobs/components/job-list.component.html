@@ -1,0 +1,33 @@
+<section class="job-list">
+  <header class="list-header">
+    <h3>Jobs</h3>
+    <span>{{ totalCount }} results</span>
+  </header>
+
+  @if (loading) {
+    <div class="loading">Loading jobs...</div>
+  } @else if (jobs.length === 0) {
+    <div class="empty">No jobs found for current filters.</div>
+  } @else {
+    <div class="cards">
+      @for (job of jobs; track job.jobId) {
+        <app-job-card
+          [job]="job"
+          [selected]="selectedJobId === job.jobId"
+          (selectedJob)="jobSelected.emit($event)"
+          (openOriginal)="openOriginal.emit($event)">
+        </app-job-card>
+      }
+    </div>
+  }
+
+  <p-paginator
+    [rows]="pageSize"
+    [first]="first"
+    [totalRecords]="totalCount"
+    [showPageLinks]="true"
+    [showCurrentPageReport]="true"
+    currentPageReportTemplate="Showing {{first + 1}} to {{first + jobs.length}} of {{totalCount}}"
+    (onPageChange)="onPage($event)">
+  </p-paginator>
+</section>

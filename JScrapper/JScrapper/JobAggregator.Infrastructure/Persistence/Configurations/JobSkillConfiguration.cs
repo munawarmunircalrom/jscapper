@@ -20,6 +20,7 @@ public sealed class JobSkillConfiguration : IEntityTypeConfiguration<JobSkill>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(x => new { x.JobId, x.Name }).IsUnique();
+        builder.HasIndex(x => x.Name);
 
         builder.ConfigureAuditable();
     }

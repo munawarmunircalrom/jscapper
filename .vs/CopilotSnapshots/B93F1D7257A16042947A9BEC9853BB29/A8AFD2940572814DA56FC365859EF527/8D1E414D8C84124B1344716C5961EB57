@@ -1,0 +1,80 @@
+﻿using JobAggregator.Application.Abstractions.Providers;
+using JobAggregator.Infrastructure.Ingestion;
+
+namespace JobAggregator.Infrastructure.Tests.Infrastructure;
+
+public sealed class NormalizationAndDeduplicationTests
+{
+    [Fact]
+    public async Task RawJobNormalizer_ShouldStripHtmlAndNormalizeUrl()
+    {
+        var normalizer = new RawJobNormalizer();
+
+        var input = new RawJob(
+            ProviderName: "LinkedIn",
+            ExternalJobId: "li-10",
+            Title: "Senior <b>.NET</b> Engineer",
+            Company: "Acme",
+            Description: "<p>Build <strong>APIs</strong></p>",
+            Location: "Lahore",
+            SalaryMin: null,
+            SalaryMax: null,
+            Currency: "pkr",
+            EmploymentType: "Full-time",
+            Experience: "Senior",
+            Skills: [" C# ", "c#", "SQL"],
+            PostedAtUtc: DateTimeOffset.UtcNow,
+            SourceUrl: new Uri("https://jobs.example.com/view/10/?utm=abc"),
+            CanonicalUrl: null,
+            ContentHash: null,
+            DeduplicationConfidence: null,
+            IdempotencyKey: "");
+
+        var normalized = (await normalizer.NormalizeAsync([input], CancellationToken.None)).Single();
+
+        Assert.Equal("Senior .NET Engineer", normalized.Title);
+        Assert.Equal("Build APIs", normalized.Description);
+        Assert.Equal("https://jobs.example.com/view/10", normalized.CanonicalUrl);
+        Assert.Equal("PKR", normalized.Currency);
+        Assert.Equal(2, normalized.Skills.Count);
+    }
+
+    [Fact]
+    public async Task RawJobDeduplicator_ShouldKeepCrossSourceDuplicateWithConfidence()
+    {
+        var normalizer = new RawJobNormalizer();
+        var deduplicator = new RawJobDeduplicator();
+
+        var first = BuildRaw("LinkedIn", "li-1", "https://jobs.example.com/job/1");
+        var second = BuildRaw("Indeed", "in-1", "https://jobs.example.com/job/1/?src=indeed");
+
+        var normalized = await normalizer.NormalizeAsync([first, second], CancellationToken.None);
+
+        var result = await deduplicator.DeduplicateAsync(normalized, CancellationToken.None);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal(0.0, result.First().DeduplicationConfidence);
+        Assert.True(result.Last().DeduplicationConfidence >= 0.95);
+    }
+
+    private static RawJob BuildRaw(string provider, string externalId, string url)
+        => new(
+            ProviderName: provider,
+            ExternalJobId: externalId,
+            Title: "Backend Engineer",
+            Company: "Acme",
+            Description: "Build APIs",
+            Location: "Lahore",
+            SalaryMin: 1000,
+            SalaryMax: 2000,
+            Currency: "USD",
+            EmploymentType: "Full-time",
+            Experience: "Mid",
+            Skills: ["C#"],
+            PostedAtUtc: DateTimeOffset.UtcNow,
+            SourceUrl: new Uri(url),
+            CanonicalUrl: url,
+            ContentHash: null,
+            DeduplicationConfidence: null,
+            IdempotencyKey: $"{provider}:{externalId}");
+}

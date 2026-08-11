@@ -120,6 +120,10 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Name");
 
+                    b.HasIndex("Name", "IsDeleted")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
                     b.ToTable("Companies", (string)null);
                 });
 
@@ -201,15 +205,24 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CompanyId");
 
+                    b.HasIndex("IsDeleted");
+
                     b.HasIndex("JobLocationId");
 
                     b.HasIndex("JobSalaryId");
 
                     b.HasIndex("PostedAtUtc");
 
+                    b.HasIndex("IsDeleted", "PostedAtUtc");
+
                     b.HasIndex("Title", "CompanyId");
 
-                    b.ToTable("Jobs", (string)null);
+                    b.HasIndex("EmploymentType", "WorkMode", "Seniority");
+
+                    b.ToTable("Jobs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Jobs_ExpiresAfterPosted", "[PostedAtUtc] IS NULL OR [ExpiresAtUtc] IS NULL OR [ExpiresAtUtc] >= [PostedAtUtc]");
+                        });
                 });
 
             modelBuilder.Entity("JobAggregator.Domain.Entities.JobAlert", b =>
@@ -221,14 +234,36 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("EmploymentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Experience")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<int>("FrequencyMinutes")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Keywords")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTimeOffset?>("LastRunAtUtc")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("MaxSalary")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("MinSalary")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -240,11 +275,22 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<bool?>("Remote")
+                        .HasColumnType("bit");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<string>("SkillsCsv")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("SourcesCsv")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -335,6 +381,10 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("MatchConfidence")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -547,7 +597,10 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("JobSalaries", (string)null);
+                    b.ToTable("JobSalaries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_JobSalaries_MinLessOrEqualMax", "[MinAmount] IS NULL OR [MaxAmount] IS NULL OR [MinAmount] <= [MaxAmount]");
+                        });
                 });
 
             modelBuilder.Entity("JobAggregator.Domain.Entities.JobSkill", b =>
@@ -580,6 +633,8 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name");
 
                     b.HasIndex("JobId", "Name")
                         .IsUnique();
@@ -674,12 +729,23 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("RawPayloadHash");
+
                     b.HasIndex("JobId", "IsActive");
+
+                    b.HasIndex("JobId", "JobSourceId")
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
 
                     b.HasIndex("JobSourceId", "ExternalJobId")
                         .IsUnique();
 
-                    b.ToTable("JobSourcePostings", (string)null);
+                    b.HasIndex("JobSourceId", "IsActive");
+
+                    b.ToTable("JobSourcePostings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_JobSourcePostings_LastSeenAfterFirstSeen", "[LastSeenAtUtc] >= [FirstSeenAtUtc]");
+                        });
                 });
 
             modelBuilder.Entity("JobAggregator.Domain.Entities.Notification", b =>
@@ -688,11 +754,22 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("AlertId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsRead")
                         .HasColumnType("bit");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Message")
                         .IsRequired()
@@ -716,6 +793,14 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<DateTimeOffset?>("SentAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -734,7 +819,17 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AlertId");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("Status", "Channel", "CreatedAtUtc");
+
                     b.HasIndex("UserId", "IsRead", "CreatedAtUtc");
+
+                    b.HasIndex("UserId", "JobId", "AlertId", "Channel")
+                        .IsUnique()
+                        .HasFilter("[JobId] IS NOT NULL AND [AlertId] IS NOT NULL");
 
                     b.ToTable("Notifications", (string)null);
                 });
@@ -928,7 +1023,7 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
                     b.HasOne("JobAggregator.Domain.Entities.Job", "CanonicalJob")
                         .WithMany()
                         .HasForeignKey("CanonicalJobId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("JobAggregator.Domain.Entities.JobSourcePosting", "DuplicateJobSourcePosting")
@@ -1001,11 +1096,25 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("JobAggregator.Domain.Entities.Notification", b =>
                 {
+                    b.HasOne("JobAggregator.Domain.Entities.JobAlert", "Alert")
+                        .WithMany("Notifications")
+                        .HasForeignKey("AlertId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("JobAggregator.Domain.Entities.Job", "Job")
+                        .WithMany("Notifications")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("JobAggregator.Domain.Entities.User", "User")
                         .WithMany("Notifications")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Alert");
+
+                    b.Navigation("Job");
 
                     b.Navigation("User");
                 });
@@ -1053,7 +1162,14 @@ namespace JobAggregator.Infrastructure.Persistence.Migrations
 
                     b.Navigation("JobSourcePostings");
 
+                    b.Navigation("Notifications");
+
                     b.Navigation("SavedJobs");
+                });
+
+            modelBuilder.Entity("JobAggregator.Domain.Entities.JobAlert", b =>
+                {
+                    b.Navigation("Notifications");
                 });
 
             modelBuilder.Entity("JobAggregator.Domain.Entities.JobIngestionRun", b =>

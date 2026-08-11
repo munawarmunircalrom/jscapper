@@ -1,0 +1,170 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using JobAggregator.Application.Abstractions.Providers;
+
+namespace JobAggregator.Infrastructure.Ingestion;
+
+internal static partial class JobNormalization
+{
+    private static readonly Regex MultiWhitespaceRegex = MultiWhitespace();
+    private static readonly Regex HtmlTagRegex = HtmlTag();
+
+    public static RawJob Normalize(RawJob job)
+    {
+        var normalizedTitle = NormalizeText(job.Title);
+        var normalizedCompany = NormalizeText(job.Company);
+        var normalizedDescription = NormalizeText(job.Description);
+        var normalizedLocation = NormalizeText(job.Location);
+        var normalizedCurrency = NormalizeCurrency(job.Currency);
+        var normalizedEmploymentType = NormalizeText(job.EmploymentType);
+        var normalizedExperience = NormalizeText(job.Experience);
+        var normalizedSkills = NormalizeSkills(job.Skills);
+        var canonicalUrl = NormalizeUrl(job.CanonicalUrl) ?? NormalizeUrl(job.SourceUrl?.ToString());
+
+        var contentHash = ComputeContentHash(
+            normalizedTitle,
+            normalizedCompany,
+            normalizedDescription,
+            normalizedLocation,
+            job.SalaryMin,
+            job.SalaryMax,
+            normalizedCurrency,
+            normalizedEmploymentType,
+            normalizedExperience,
+            normalizedSkills,
+            job.PostedAtUtc,
+            canonicalUrl);
+
+        var idempotency = string.IsNullOrWhiteSpace(job.IdempotencyKey)
+            ? $"{job.ProviderName}:{job.ExternalJobId}".ToLowerInvariant()
+            : NormalizeText(job.IdempotencyKey) ?? $"{job.ProviderName}:{job.ExternalJobId}".ToLowerInvariant();
+
+        return job with
+        {
+            Title = normalizedTitle ?? string.Empty,
+            Company = normalizedCompany ?? string.Empty,
+            Description = normalizedDescription,
+            Location = normalizedLocation,
+            SalaryMin = NormalizeSalary(job.SalaryMin),
+            SalaryMax = NormalizeSalary(job.SalaryMax),
+            Currency = normalizedCurrency,
+            EmploymentType = normalizedEmploymentType,
+            Experience = normalizedExperience,
+            Skills = normalizedSkills,
+            CanonicalUrl = canonicalUrl,
+            ContentHash = contentHash,
+            IdempotencyKey = idempotency
+        };
+    }
+
+    public static string? NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var withoutHtml = HtmlTagRegex.Replace(value, " ");
+        var trimmed = withoutHtml.Trim();
+        var collapsed = MultiWhitespaceRegex.Replace(trimmed, " ");
+        return collapsed;
+    }
+
+    public static string? NormalizeCurrency(string? currency)
+    {
+        var text = NormalizeText(currency);
+        return text?.ToUpperInvariant();
+    }
+
+    public static decimal? NormalizeSalary(decimal? salary)
+    {
+        if (!salary.HasValue)
+        {
+            return null;
+        }
+
+        return decimal.Round(salary.Value, 2, MidpointRounding.AwayFromZero);
+    }
+
+    public static IReadOnlyCollection<string> NormalizeSkills(IReadOnlyCollection<string>? skills)
+    {
+        if (skills is null || skills.Count == 0)
+        {
+            return [];
+        }
+
+        return skills
+            .Select(NormalizeText)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public static string? NormalizeUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.ToLowerInvariant(),
+            Host = uri.Host.ToLowerInvariant(),
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        if ((builder.Scheme == "https" && builder.Port == 443) || (builder.Scheme == "http" && builder.Port == 80))
+        {
+            builder.Port = -1;
+        }
+
+        var normalizedPath = builder.Path.TrimEnd('/');
+        builder.Path = string.IsNullOrEmpty(normalizedPath) ? "/" : normalizedPath;
+
+        return builder.Uri.ToString();
+    }
+
+    public static string ComputeContentHash(
+        string? title,
+        string? company,
+        string? description,
+        string? location,
+        decimal? salaryMin,
+        decimal? salaryMax,
+        string? currency,
+        string? employmentType,
+        string? experience,
+        IReadOnlyCollection<string> skills,
+        DateTimeOffset? postedAtUtc,
+        string? canonicalUrl)
+    {
+        var material = string.Join("|",
+            title?.ToLowerInvariant() ?? string.Empty,
+            company?.ToLowerInvariant() ?? string.Empty,
+            location?.ToLowerInvariant() ?? string.Empty,
+            employmentType?.ToLowerInvariant() ?? string.Empty,
+            experience?.ToLowerInvariant() ?? string.Empty,
+            currency?.ToLowerInvariant() ?? string.Empty,
+            salaryMin?.ToString("0.00") ?? string.Empty,
+            salaryMax?.ToString("0.00") ?? string.Empty,
+            postedAtUtc?.UtcDateTime.ToString("yyyy-MM-dd") ?? string.Empty,
+            canonicalUrl?.ToLowerInvariant() ?? string.Empty,
+            string.Join(',', skills.Select(x => x.ToLowerInvariant())),
+            (description ?? string.Empty).ToLowerInvariant());
+
+        var bytes = Encoding.UTF8.GetBytes(material);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    [GeneratedRegex("\\s+")]
+    private static partial Regex MultiWhitespace();
+
+    [GeneratedRegex("<[^>]+>")]
+    private static partial Regex HtmlTag();
+}

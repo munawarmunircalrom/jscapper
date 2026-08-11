@@ -1,0 +1,21 @@
+﻿using FluentValidation;
+
+namespace JobAggregator.Application.Features.Jobs.Queries;
+
+public sealed class SearchJobsQueryValidator : AbstractValidator<SearchJobsQuery>
+{
+    public SearchJobsQueryValidator()
+    {
+        RuleFor(x => x.PageNumber).GreaterThan(0);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+        RuleFor(x => x.SortBy)
+            .Must(x => string.IsNullOrWhiteSpace(x) || x.Equals("postedDate", StringComparison.OrdinalIgnoreCase) || x.Equals("title", StringComparison.OrdinalIgnoreCase) || x.Equals("company", StringComparison.OrdinalIgnoreCase) || x.Equals("salary", StringComparison.OrdinalIgnoreCase) || x.Equals("experience", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("SortBy must be one of: postedDate, title, company, salary, experience.");
+        RuleFor(x => x.SortDirection)
+            .Must(x => string.IsNullOrWhiteSpace(x) || x.Equals("asc", StringComparison.OrdinalIgnoreCase) || x.Equals("desc", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("SortDirection must be asc or desc.");
+        RuleFor(x => x)
+            .Must(x => !x.PostedFrom.HasValue || !x.PostedTo.HasValue || x.PostedFrom <= x.PostedTo)
+            .WithMessage("PostedFrom must be less than or equal to PostedTo.");
+    }
+}

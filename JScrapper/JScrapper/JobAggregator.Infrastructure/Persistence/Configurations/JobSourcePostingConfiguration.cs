@@ -8,7 +8,11 @@ public sealed class JobSourcePostingConfiguration : IEntityTypeConfiguration<Job
 {
     public void Configure(EntityTypeBuilder<JobSourcePosting> builder)
     {
-        builder.ToTable("JobSourcePostings");
+        builder.ToTable("JobSourcePostings", table =>
+        {
+            table.HasCheckConstraint("CK_JobSourcePostings_LastSeenAfterFirstSeen", "[LastSeenAtUtc] >= [FirstSeenAtUtc]");
+        });
+
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.ExternalJobId).IsRequired().HasMaxLength(200);
@@ -28,6 +32,11 @@ public sealed class JobSourcePostingConfiguration : IEntityTypeConfiguration<Job
 
         builder.HasIndex(x => new { x.JobSourceId, x.ExternalJobId }).IsUnique();
         builder.HasIndex(x => new { x.JobId, x.IsActive });
+        builder.HasIndex(x => x.RawPayloadHash);
+        builder.HasIndex(x => new { x.JobId, x.JobSourceId })
+            .IsUnique()
+            .HasFilter("[IsActive] = 1");
+        builder.HasIndex(x => new { x.JobSourceId, x.IsActive });
 
         builder.ConfigureAuditable();
     }
