@@ -1,7 +1,9 @@
 using Asp.Versioning;
 using JobAggregator.Application.Features.Jobs.Queries;
 using JobAggregator.Application.DTOs;
+using JobAggregator.Application.Configuration;
 using MediatR;
+using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Mvc;
 
 namespace JobAggregator.Api.Controllers;
@@ -9,7 +11,9 @@ namespace JobAggregator.Api.Controllers;
 [ApiController]
 [ApiVersion(1.0)]
 [Route("jobs")]
-public sealed class JobsController(ISender sender) : ControllerBase
+public sealed class JobsController(
+    ISender sender,
+    IOptions<SearchPlatformOptions> searchPlatformOptions) : ControllerBase
 {
     [HttpGet("search")]
     public async Task<ActionResult<JobSearchResult>> Search(
@@ -37,6 +41,9 @@ public sealed class JobsController(ISender sender) : ControllerBase
             ? null
             : skills.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
+        var fallbackProvider = searchPlatformOptions.Value.DefaultProvider;
+        var effectiveSource = string.IsNullOrWhiteSpace(source) ? fallbackProvider : source;
+
         var query = new SearchJobsQuery(
             keyword,
             title,
@@ -49,7 +56,7 @@ public sealed class JobsController(ISender sender) : ControllerBase
             skillList,
             remote,
             hybrid,
-            source,
+            effectiveSource,
             postedFrom,
             postedTo,
             sortBy,

@@ -1,9 +1,13 @@
 using JobAggregator.Application.Abstractions.Providers;
+using JobAggregator.Application.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace JobAggregator.Infrastructure.JobSources;
 
-public sealed class LinkedInJobSourceProvider(ILogger<LinkedInJobSourceProvider> logger)
+public sealed class LinkedInJobSourceProvider(
+    ILogger<LinkedInJobSourceProvider> logger,
+    IOptions<SearchPlatformOptions> searchPlatformOptions)
     : JobSourceProviderBase(logger)
 {
     public override string Name => "LinkedIn";
@@ -12,6 +16,9 @@ public sealed class LinkedInJobSourceProvider(ILogger<LinkedInJobSourceProvider>
     {
         Name = "LinkedIn",
         Enabled = true,
+        BaseUrl = searchPlatformOptions.Value.Providers.TryGetValue("LinkedIn", out var endpoint)
+            ? endpoint.PublicEndpoint
+            : "https://www.linkedin.com/jobs/search",
         TimeoutSeconds = 30,
         MaxRetries = 2,
         RetryDelayMilliseconds = 500,

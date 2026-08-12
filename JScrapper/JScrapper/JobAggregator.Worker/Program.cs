@@ -1,4 +1,5 @@
 using JobAggregator.Application;
+using JobAggregator.Application.Configuration;
 using JobAggregator.Infrastructure;
 using JobAggregator.Worker.Jobs;
 using JobAggregator.Worker.Scheduling;
@@ -8,6 +9,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.Configure<SearchPlatformOptions>(builder.Configuration.GetSection("SearchPlatforms"));
 
 builder.Services.Configure<IngestionSchedulingOptions>(builder.Configuration.GetSection("Ingestion"));
 

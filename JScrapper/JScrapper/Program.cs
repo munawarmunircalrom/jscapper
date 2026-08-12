@@ -1,5 +1,6 @@
 using Asp.Versioning;
 using JobAggregator.Application;
+using JobAggregator.Application.Configuration;
 using JobAggregator.Api.Middleware;
 using JobAggregator.Api.Security;
 using JobAggregator.Infrastructure;
@@ -47,6 +48,8 @@ builder.Services.AddProblemDetails();
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+builder.Services.Configure<SearchPlatformOptions>(builder.Configuration.GetSection("SearchPlatforms"));
 
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
